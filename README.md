@@ -17,3 +17,9 @@ The project follows a structured data science pipeline:
 - Data Cleaning: Handling missing values (coded as -97, -98, -99 in the original survey).  
 - Exploratory Data Analysis (EDA): Identifying trends in financial risk aversion and digital tool adoption.
 - Statistical Modeling: (Regression or Clustering) to segment the population based on financial vulnerability.
+
+### Installation
+To explore the analysis and run the code locally, clone this repository using the following command:
+```bash
+git clone 
+cd your-repo-name
