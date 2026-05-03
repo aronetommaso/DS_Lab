@@ -21,5 +21,5 @@ The project follows a structured data science pipeline:
 ### Installation
 To explore the analysis and run the code locally, clone this repository using the following command:
 ```bash
-git clone 
-cd your-repo-name
+git clone https://github.com/aronetommaso/DS_Lab.git
+cd DS_Lab
