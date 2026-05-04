@@ -1,4 +1,8 @@
 import pandas as pd
+import numpy as np
+import os
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 def preprocess_complete_iacofi(df):
     """
@@ -169,20 +173,182 @@ def preprocess_complete_iacofi(df):
 
     return df
 
+
+
+def preprocess_financial_variables(df):
+    """
+    Preprocesses financial variables from the IACOFI 2023 survey.
+    Transforms multi-option questions into semantic scores/flags to reduce dimensionality,
+    and maps categorical questions to readable strings while handling missing values.
+    """
+    
+    # 1. Map Categorical Variables & Handle Missing Values (-97, -98, -99 -> NaN)
+    categorical_value_maps = {
+        'qf1_a': {1: 'yes', 0: 'no'},
+        'qf1': {1: 'you', 2: 'you and someone else', 3: 'someone else'},
+        'qf4': {1: 'yes_immediate', 2: 'yes_selling_assets', 0: 'no'},
+        'qf8': {1: 'very_confident', 2: 'confident', 3: 'middle', 4: 'not_confident', 5: 'not_confident_at_all', 6: 'no_retirement_plan'},
+        'qf11': {1: 'yes', 0: 'no'},
+        'qf13': {1: 'less_than_a_week', 2: '1_week_to_1_month', 3: '1_to_3_months', 4: '3_to_6_months', 5: '6_months_or_more'}
+    }
+
+    # Replace missing/refusal codes with NaN, then map to strings
+    missing_codes = [-97, 97, -98, 98, -99, 99, -999]
+    for col, mapping in categorical_value_maps.items():
+        if col in df.columns:
+            df[col] = df[col].replace(missing_codes, np.nan)
+            df[col] = df[col].map(mapping)
+
+    # 2. FEATURE ENGINEERING: Multi-option groups to Scores and Macro-Flags
+    
+    # helper to safely select columns that actually exist in the dataframe
+    def get_existing_cols(cols):
+        return [c for c in cols if c in df.columns]
+
+    # --- QF2: Score Pianificazione Finanziaria (0 to 6) ---
+    qf2_cols = get_existing_cols(['qf2_1', 'qf2_2', 'qf2_3', 'qf2_4', 'qf2_5', 'qf2_6'])
+    if qf2_cols:
+        # Sum only the '1' (Yes) responses. Missing values in these binary cols are treated as 0 for the score sum
+        df['Financial_planning_score'] = df[qf2_cols].eq(1).sum(axis=1)
+
+    # --- QF3: Livello Sofisticazione Risparmio (0 to 3) ---
+    def calc_saving_sophistication(row):
+        # Level 3: Investor (Bonds, Crypto, Stocks)
+        if row.get('qf3_5') == 1 or row.get('qf3_6') == 1 or row.get('qf3_7') == 1:
+            return 3
+        # Level 2: Basic Banking (Deposit account)
+        elif row.get('qf3_2') == 1:
+            return 2
+        # Level 1: Informal/Physical (Cash, Family, Informal club)
+        elif row.get('qf3_1') == 1 or row.get('qf3_3') == 1 or row.get('qf3_4') == 1:
+            return 1
+        # Level 0: Didn't save
+        elif row.get('qf3_98') == 1:
+            return 0
+        return np.nan # If no clear answer or all NaN
+
+    if any('qf3' in c for c in df.columns):
+        df['Saving_level_sophistication'] = df.apply(calc_saving_sophistication, axis=1)
+
+    # --- QF9: Pensione (Macro-Flags 0/1) ---
+    qf9_state = get_existing_cols(['qf9_1', 'qf9_12'])
+    qf9_private = get_existing_cols(['qf9_2', 'qf9_3', 'qf9_4', 'qf9_5', 'qf9_6'])
+    qf9_network = get_existing_cols(['qf9_7', 'qf9_8', 'qf9_10'])
+
+    if qf9_state: df['State_employee_pension'] = df[qf9_state].eq(1).any(axis=1).astype(int)
+    if qf9_private: df['Private_pension_asset'] = df[qf9_private].eq(1).any(axis=1).astype(int)
+    if qf9_network: df['Informal_network_pension'] = df[qf9_network].eq(1).any(axis=1).astype(int)
+
+    # --- QF12: Making Ends Meet (Macro-Flags 0/1) ---
+    qf12_own = get_existing_cols(['qf12_1_1', 'qf12_1_2', 'qf12_1_3'])
+    qf12_help = get_existing_cols(['qf12_2_1', 'qf12_2_2', 'qf12_2_3', 'qf12_3_1'])
+    qf12_debt = get_existing_cols([
+        'qf12_4_1', 'qf12_4_2', 'qf12_5_1', 'qf12_5_2', 'qf12_5_3', 
+        'qf12_5_4', 'qf12_5_5', 'qf12_6_1', 'qf12_6_2'
+    ])
+
+    if qf12_own: df['Use_own_resources'] = df[qf12_own].eq(1).any(axis=1).astype(int)
+    if qf12_help: df['Informal_external_help'] = df[qf12_help].eq(1).any(axis=1).astype(int)
+    if qf12_debt: df['Use_dangerous_debt'] = df[qf12_debt].eq(1).any(axis=1).astype(int)
+
+    # 3. Rename base categorical columns for clarity
+    base_financial_mapping = {
+        'qf1_a': 'personal_budget_decisions',
+        'qf1': 'household_budget_decisions',
+        'qf4': 'expenditure_shock_capacity',
+        'qf8': 'retirement_plan_confidence',
+        'qf11': 'income_not_covering_costs',
+        'qf13': 'lost_income_survival_time'
+    }
+    df = df.rename(columns=base_financial_mapping)
+
+    # 4. Filter dataset to keep only the newly created and mapped features
+    final_engineered_cols = list(base_financial_mapping.values()) + [
+        'Financial_planning_score',
+        'Saving_level_sophistication',
+        'State_employee_pension',
+        'Private_pension_asset',
+        'Informal_network_pension',
+        'Use_own_resources',
+        'Informal_external_help',
+        'Use_dangerous_debt'
+    ]
+    
+    # Keep only those that were successfully created
+    available_cols = [col for col in final_engineered_cols if col in df.columns]
+    df_financial = df[available_cols].copy()
+
+    # Drop original granular binary columns since we synthesized them into scores/flags
+    original_binary_patterns = ['qf2_', 'qf3_', 'qf9_', 'qf12_']
+    cols_to_drop = [c for c in df_financial.columns if any(p in c for p in original_binary_patterns)]
+    df_financial = df_financial.drop(columns=cols_to_drop, errors='ignore')
+
+    # Print summary to verify new cardinality
+    print("Financial Dataset Overview:")
+    print(df_financial.head())
+    print("\nUnique categories per column (should be much lower now!):")
+    for col in df_financial.columns:
+        # Using dropna() to count only valid categories
+        print(f"for {col}: {len(df_financial[col].dropna().unique())}")
+
+    return df_financial
+
+def plotting_financial_variables(df):
+    """
+    Generates and saves a plot for each financial variable in the dataframe.
+    Saves all plots inside the 'plot' folder.
+    """
+    output_dir = 'plot'
+    os.makedirs(output_dir, exist_ok=True)
+
+    for col in df.columns:
+        plt.figure(figsize=(10, 6))
+        # Remove NaN values to check data types
+        series = df[col].dropna()
+
+        if series.empty:
+            plt.close()
+            continue
+
+        # Identify if the feature is categorical, binary, or an integer score
+        is_categorical = pd.api.types.is_object_dtype(series)
+        is_discrete = pd.api.types.is_numeric_dtype(series) and (series.nunique() <= 15 or all(series % 1 == 0))
+
+        if is_categorical or is_discrete:
+            # Countplot for classes (categorical, 0/1 flags, integer scores)
+            sns.countplot(data=df, x=col, order=series.value_counts().index, hue=col, legend=False, palette='viridis')
+            plt.title(f'Class count for variable: {col}')
+            plt.xticks(rotation=45, ha='right')
+            plt.ylabel('Count')
+        else:
+            # Distribution histogram for continuous non-integer values
+            sns.histplot(series, kde=True, color='skyblue', bins=30)
+            plt.title(f'Distribution of variable: {col}')
+            plt.ylabel('Frequency')
+
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, f"{col}.png"))
+        plt.close()
+        
+    print(f"All plots have been saved in the '{output_dir}' folder.")
+
+
+
+
 def main():
     file_path = "c:/Users/tomma/Downloads/Database_ASCII_EN/Database_ENG.csv"
     try:
         df = pd.read_csv(file_path)
-        df = preprocess_complete_iacofi(df)
+        df = preprocess_financial_variables(df)
+        plotting_financial_variables(df)
         
-        print("Preprocessing successful! Here are the new columns:\n")
-        print(df.columns.tolist())
+
             
     except Exception as e:
         print(f"An error occurred: {e}")
 
 
-        
+
 
 if __name__ == "__main__":
     main()
