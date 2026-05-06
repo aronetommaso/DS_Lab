@@ -291,7 +291,108 @@ def preprocess_financial_variables(df):
         # Using dropna() to count only valid categories
         print(f"for {col}: {len(df_financial[col].dropna().unique())}")
 
-    return df_financial
+    return df
+
+def preprocess_products_and_digital(df):
+    """
+    Preprocesses the QP block (Financial Products, Digital Behaviors, Issues).
+    """
+    df_qp = df.copy()
+
+    def get_existing_cols(cols):
+        return [c for c in cols if c in df_qp.columns]
+
+    qp2_cols = [c for c in df_qp.columns if c.startswith('qp2_')]
+    for col in qp2_cols:
+        df_qp[col] = df_qp[col].replace([-97, 97, -98, 98, -99, 99, -999], np.nan).fillna(0)
+
+    score_transactional = ['qp2_8', 'qp2_14', 'qp2_15', 'qp2_add_5']
+    score_saving = ['qp2_1', 'qp2_9', 'qp2_11', 'qp2_add_4']
+    score_debt = ['qp2_5', 'qp2_7', 'qp2_add_1', 'qp2_add_2', 'qp2_add_3']
+    score_invest_trad = ['qp2_2', 'qp2_12', 'qp2_13']
+    score_asset_alt = ['qp2_3', 'qp2_16', 'qp2_17']
+
+    df_qp['Transactional_Score'] = df_qp[get_existing_cols(score_transactional)].sum(axis=1)
+    df_qp['Saving_Protection_Score'] = df_qp[get_existing_cols(score_saving)].sum(axis=1)
+    df_qp['Consumer_Debt_Score'] = df_qp[get_existing_cols(score_debt)].sum(axis=1)
+    df_qp['Traditional_Investment_Score'] = df_qp[get_existing_cols(score_invest_trad)].sum(axis=1)
+    df_qp['Alternative_Asset_Score'] = df_qp[get_existing_cols(score_asset_alt)].sum(axis=1)
+
+    if 'qp7_add1' in df_qp.columns:
+        df_qp['Risk_Aversion_Class'] = df_qp['qp7_add1'].replace({-99: 5, 99: 5})
+        df_qp['Risk_Aversion_Class'] = df_qp['Risk_Aversion_Class'].apply(lambda x: x if x in [1, 2, 3, 4, 5] else np.nan)
+
+    qp8_cols = get_existing_cols(['qp8_1', 'qp8_2', 'qp8_3', 'qp8_4', 'qp8_5'])
+    for col in qp8_cols:
+        df_qp[col] = df_qp[col].replace({2: 0, -95: 0, -97: 0, -98: 0, -99: 0}).fillna(0)
+        if 'qd14' in df_qp.columns: df_qp.loc[df_qp['qd14'] == 0, col] = 0
+
+    df_qp['Digital_Onboarding_Score'] = df_qp[qp8_cols].sum(axis=1)
+
+    qp9_cols = get_existing_cols(['qp9_1', 'qp9_3', 'qp9_4', 'qp9_5', 'qp9_6', 'qp9_7', 'qp9_10'])
+    for col in qp9_cols:
+        df_qp[col] = df_qp[col].replace({-95: 1, -97: 1, -98: 1, -99: 1}).fillna(1)
+        if 'qd14' in df_qp.columns: df_qp.loc[df_qp['qd14'] == 0, col] = 1 
+        df_qp[col] = df_qp[col] - 1 
+
+    df_qp['Basic_Admin_Intensity'] = df_qp[get_existing_cols(['qp9_1', 'qp9_3'])].sum(axis=1)
+    df_qp['Daily_Transactional_Intensity'] = df_qp[get_existing_cols(['qp9_4', 'qp9_5', 'qp9_7'])].sum(axis=1)
+    df_qp['Advanced_Fintech_Intensity'] = df_qp[get_existing_cols(['qp9_6', 'qp9_10'])].sum(axis=1)
+
+    qp10_cols = [c for c in df_qp.columns if c.startswith('qp10_')]
+    for col in qp10_cols:
+        df_qp[col] = df_qp[col].replace({-95: 0, -97: 0, -98: 0, -99: 0}).fillna(0)
+
+    cyber = get_existing_cols(['qp10_1', 'qp10_2', 'qp10_3'])
+    friction = get_existing_cols(['qp10_4', 'qp10_5', 'qp10_9'])
+    
+    if cyber: df_qp['Cyber_Fraud_Victim'] = df_qp[cyber].eq(1).any(axis=1).astype(int)
+    if friction: df_qp['Institutional_Friction'] = df_qp[friction].eq(1).any(axis=1).astype(int)
+    if 'qp10_8' in df_qp.columns: df_qp['Credit_Excluded'] = df_qp['qp10_8'].astype(int)
+
+    if 'qp5' in df_qp.columns:
+        valid_qp5 = ~df_qp['qp5'].isin([-97, -98, -99, np.nan])
+        df_active = df_qp[valid_qp5].copy()
+    else:
+        df_active = df_qp.copy() 
+
+    def map_qp5(val):
+        if val == 1: return 'Proactive_Shopper'      
+        elif val == 2: return 'Lazy_Explorer'        
+        elif val in [3, 4]: return 'Passive_Inertial' 
+        return np.nan
+    
+    if 'qp5' in df_active.columns: 
+        df_active['Shopping_Behavior'] = df_active['qp5'].apply(map_qp5)
+
+    analytical = get_existing_cols(['qp7_1', 'qp7_2', 'qp7_3'])
+    institutional = get_existing_cols(['qp7_4', 'qp7_7'])
+    social = get_existing_cols(['qp7_5', 'qp7_6', 'qp7_81'])
+
+    df_active['is_analytical'] = df_active[analytical].eq(1).any(axis=1) if analytical else False
+    df_active['is_institutional'] = df_active[institutional].eq(1).any(axis=1) if institutional else False
+    df_active['is_social'] = df_active[social].eq(1).any(axis=1) if social else False
+
+    def assign_driver(row):
+        if row['is_analytical']: return 'Analytical_Independent'
+        elif row['is_institutional']: return 'Institutional_Commercial'
+        elif row['is_social']: return 'Social_Emotional'
+        return 'Other_or_None'
+
+    df_active['Decision_Driver'] = df_active.apply(assign_driver, axis=1)
+    df_active = df_active.drop(columns=['is_analytical', 'is_institutional', 'is_social'], errors='ignore')
+
+    final_qp_cols = [
+        'Transactional_Score', 'Saving_Protection_Score', 'Consumer_Debt_Score', 
+        'Traditional_Investment_Score', 'Alternative_Asset_Score', 'Risk_Aversion_Class', 
+        'Digital_Onboarding_Score', 'Basic_Admin_Intensity', 'Daily_Transactional_Intensity', 
+        'Advanced_Fintech_Intensity', 'Cyber_Fraud_Victim', 'Institutional_Friction', 'Credit_Excluded'
+    ]
+    
+    df_qp_main = df_qp.copy() #[[c for c in final_qp_cols if c in df_qp.columns]].copy()
+    print("QP Block (Products & Digital) preprocessed successfully.")
+    return df_qp_main, df_active
+ 
 
 def plotting_financial_variables(df):
     """
@@ -340,10 +441,10 @@ def main():
     try:
         df = pd.read_csv(file_path)
         df = preprocess_financial_variables(df)
-        plotting_financial_variables(df)
-        
 
-            
+        new_df_main, new_df_active = preprocess_products_and_digital(df)
+
+    
     except Exception as e:
         print(f"An error occurred: {e}")
 
