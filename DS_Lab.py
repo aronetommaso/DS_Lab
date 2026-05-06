@@ -290,8 +290,63 @@ def preprocess_financial_variables(df):
     for col in df_financial.columns:
         # Using dropna() to count only valid categories
         print(f"for {col}: {len(df_financial[col].dropna().unique())}")
+    
+    df = df.drop(columns = ['qf2_1', 'qf2_2', 'qf2_3', 'qf2_4', 'qf2_5', 'qf2_6', 'qf3_1', 'qf3_2', 'qf3_3', 'qf3_5', 'qf3_6', 'qf3_7', 'qf3_8', 'qf3_81', 'qf3_98', 'qf9_1', 'qf9_2', 'qf9_3', 'qf9_4', 'qf9_5', 'qf9_6', 'qf9_7', 'qf9_8', 'qf9_9', 'qf9_10', 'qf9_11', 'qf9_12', 'qf12_1_1', 'qf12_1_2', 'qf12_1_3', 'qf12_2_1', 'qf12_2_2', 'qf12_3_1', 'qf12_3_2', 'qf12_3_3', 'qf12_3_7', 'qf12_4_1', 'qf12_4_2', 'qf12_5_1', 'qf12_5_3', 'qf12_6_1', 'qf12_6_2', 'qf12_7_1', 'qf12_97', 'qf12_99'])
 
     return df
+
+def clean_qk(df):
+    """
+    Cleans QK financial knowledge variables.
+
+    qk1_clean:
+        high = qk1 1/2
+        medium-low = qk1 3/4
+        not defined = missing/refused/other
+
+    qk3, qk4, qk5, qk6, qk10:
+        correct = 1
+        wrong/missing = 0
+
+    qk7_clean:
+        score from 0 to 6
+    """
+
+    df = df.copy()
+
+    df.columns = [col.lower() for col in df.columns]
+
+    # QK1: subjective knowledge
+    df["qk1_clean"] = 4 # not defined
+    df.loc[df["qk1"].isin([1, 2]), "qk1_clean"] = 1 #high
+    df.loc[df["qk1"].isin([4, 5]), "qk1_clean"] = 2 #medium-low
+    df.loc[df["qk1"].isin([3]), "qk1_clean"] = 3 #medium-low
+
+    # Objective QK questions: correct = 1, wrong/missing = 0
+    df["qk3_clean"] = (df["qk3"] == 3).astype(int)
+    df["qk4_clean"] = (df["qk4"] == 0).astype(int)
+    df["qk5_clean"] = (df["qk5"] == 102).astype(int)
+    df["qk6_clean"] = (df["qk6"] == 1).astype(int)
+    df["qk10_clean"] = (df["qk10"] == 1).astype(int)
+
+    # QK7: True/False battery, score 0-6
+    qk7_correct = {
+        "qk7_1": 1,
+        "qk7_2": 1,
+        "qk7_3": 1,
+        "qk7_4": 0,
+        "qk7_5": 1,
+        "qk7_6": 0
+    }
+
+    df["qk7_clean"] = 0
+
+    for col, correct_value in qk7_correct.items():
+        if col in df.columns:
+            df["qk7_clean"] += (df[col] == correct_value).astype(int)
+
+    return df
+
 
 def preprocess_products_and_digital(df):
     """
@@ -393,6 +448,43 @@ def preprocess_products_and_digital(df):
     print("QP Block (Products & Digital) preprocessed successfully.")
     return df_qp_main, df_active
  
+def calcola_e_sostituisci_score(df):
+      
+    qs_cols = [col for col in df.columns if str(col).startswith('qs')] #tutte le variabili Attitudes and Behaviour iniziano con qs
+    
+    # Categoria (Polarità e Categorie)
+    yellow_attributes=['qs1_1','qs1_3', 'qs1_7', 'qs1_10', 'qs1_13', 'qs2_1', 'qs2_2', 'qs2_6', 'qs2_8','qs3_3','qs3_9','qs3_10', 'qs3_11', 'qs3_12', 
+                   'qs4_1', 'qs4_3', 'qs4_7', 'qs4_8', 'qs5_4', 'qs5_5', 'qs5_6']
+    red_attributes = ['qs1_2', 'qs1_5', 'qs1_8', 'qs1_9', 'qs2_3', 'qs2_4', 'qs2_5', 'qs2_7', 'qs3_13', 'qs4_2', 'qs4_4', 'qs4_5', 'qs4_6']
+    green_attributes = ['qs3_2', 'qs2_9', 'qs1_4']
+    
+    pink_cat = ['qs1_1', 'qs1_2', 'qs1_3', 'qs1_5', 'qs1_8', 'qs1_13', 'qs2_1', 'qs2_3', 'qs2_5', 'qs2_9', 'qs3_2', 'qs3_11', 'qs3_12', 'qs4_7', 'qs5_4', 'qs5_5', 'qs5_6']
+    brown_cat = ['qs1_9', 'qs2_6', 'qs2_7', 'qs2_8', 'qs3_13', 'qs4_1', 'qs4_2', 'qs4_3', 'qs4_4', 'qs4_5', 'qs4_6', 'qs4_8']
+    blue_cat = ['qs1_4', 'qs1_7', 'qs1_10', 'qs2_2', 'qs2_4', 'qs3_3', 'qs3_9', 'qs3_10']
+
+    # considero solo le variabili d'interesse e NON NAN
+    df_calc = df[qs_cols].copy()
+    df_calc = df_calc.where(df_calc.isin([1, 2, 3, 4, 5]))
+    
+    # trasformazione variabili rosse e verdi
+    for col in red_attributes:
+        if col in df_calc.columns:
+            df_calc[col] = 6 - df_calc[col]
+            
+    for col in green_attributes:
+        if col in df_calc.columns:
+            df_calc[col] = 0
+            
+    # creo il nuovo dataset senza le variabili  'qs'
+    df_finale = df.drop(columns=qs_cols).copy()
+    
+    # aggiungo le tre variabili nuove
+    df_finale['finacial_situation'] = df_calc[blue_cat].sum(axis=1)
+    df_finale['behaviour_investement-payment'] = df_calc[pink_cat].sum(axis=1)
+    df_finale['knowledge_financial_privacy_digital'] = df_calc[brown_cat].sum(axis=1)
+    
+
+    return df_finale
 
 def plotting_financial_variables(df):
     """
@@ -433,6 +525,147 @@ def plotting_financial_variables(df):
         
     print(f"All plots have been saved in the '{output_dir}' folder.")
 
+def engineer_demographic_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Step 3: Full Demographic & Background Feature Engineering (IACOFI 2023).
+    """
+
+    df.columns = [col.lower() for col in df.columns]
+
+    multi_option_groups = {
+        'qd5': { 'qd5_1': 'alone', 'qd5_2': 'partner', 'qd5_3': 'children_under_18', 'qd5_4': 'children_over_18', 'qd5_5': 'adult_relatives', 'qd5_6': 'friends', 'qd5_7': 'other_adults'},
+        'qf2': { 'qf2_1': 'plan_budget', 'qf2_2': 'note_spending', 'qf2_3': 'separate_bills_money', 'qf2_4': 'note_upcoming_bills', 'qf2_5': 'use_banking_app', 'qf2_6': 'auto_payments'},
+        'qf3': { 'qf3_1': 'cash_at_home', 'qf3_2': 'deposit_account', 'qf3_3': 'family_save', 'qf3_4': 'informal_club', 'qf3_5': 'bonds', 'qf3_6': 'crypto', 'qf3_7': 'stocks', 'qf3_8': 'other', 'qf3_81': 'other_financial_instruments', 'qf3_98': 'did_not_save'},
+        'qf9': { 'qf9_1': 'gov_pension', 'qf9_2': 'occupational_pension', 'qf9_3': 'private_pension', 'qf9_4': 'sell_financial_assets', 'qf9_5': 'sell_non_financial_assets', 'qf9_6': 'asset_income', 'qf9_7': 'spouse_support', 'qf9_8': 'family_support', 'qf9_9': 'savings', 'qf9_10': 'continue_work', 'qf9_11': 'business_revenue', 'qf9_12': 'reversibility_pension'},
+        'qf12': { 'qf12_1_1': 'draw_savings', 'qf12_1_2': 'cut_spending', 'qf12_1_3': 'sell_owned', 'qf12_2_1': 'work_overtime', 'qf12_2_2': 'gov_support', 'qf12_2_3': 'ask_family', 'qf12_3_1': 'borrow_family', 'qf12_3_2': 'salary_advance', 'qf12_3_3': 'pawn', 'qf12_3_4': 'informal_loan', 'qf12_3_5': 'use_others_credit_card', 'qf12_3_6': 'flexible_mortgage', 'qf12_3_7': 'pension_withdrawal', 'qf12_4_1': 'overdraft', 'qf12_4_2': 'credit_card_cash', 'qf12_5_1': 'personal_loan', 'qf12_5_2': 'payday_loan', 'qf12_5_3': 'moneylender', 'qf12_5_4': 'sms_loan', 'qf12_5_5': 'online_cash_loan', 'qf12_6_1': 'unauthorized_overdraft', 'qf12_6_2': 'pay_late', 'qf12_7_1': 'other'},
+        'qp7': { 'qp7_1': 'specialist_comparison', 'qp7_2': 'price_comparison_website', 'qp7_3': 'independent_advisor', 'qp7_4': 'advert_brochure', 'qp7_5': 'friends_family', 'qp7_6': 'social_media_influencers', 'qp7_7': 'provider_staff', 'qp7_81': 'tv_radio_ad', 'qp7_82': 'other_sources'},
+        'qp8': { 'qp8_1': 'open_account_online', 'qp8_2': 'request_card_online', 'qp8_3': 'insurance_online', 'qp8_4': 'credit_online', 'qp8_5': 'invest_online'},
+        'qp10': { 'qp10_1': 'scam_investment', 'qp10_2': 'phishing_victim', 'qp10_3': 'unauthorized_card_use', 'qp10_4': 'unrecognized_transaction', 'qp10_5': 'formal_complaint', 'qp10_8': 'denied_credit', 'qp10_9': 'complained_remittance'}
+    }
+
+    products_suffix = { '1': 'pension', '2': 'investment_account', '3': 'mortgage', '5': 'unsecured_loan', '7': 'credit_card', '8': 'current_account', '9': 'savings_account', '11': 'insurance', '12': 'stocks', '13': 'bonds', '14': 'mobile_payment', '15': 'prepaid_card', '16': 'crypto', '17': 'esg_products', 'add_1': 'specific_good_loan', 'add_2': 'coop_loan', 'add_3': 'buy_now_pay_later', 'add_4': 'loan_insurance', 'add_5': 'basic_account', '98': 'none'}
+    multi_option_groups['qp1'] = {f'qp1_{k}': v for k, v in products_suffix.items()} 
+    multi_option_groups['qp2'] = {f'qp2_{k}': v for k, v in products_suffix.items()} 
+    multi_option_groups['qp3'] = {f'qp3_{k}': v for k, v in products_suffix.items()} 
+
+    cols_to_drop = []
+    for group_name, col_map in multi_option_groups.items():
+        existing_cols = [c for c in col_map.keys() if c in df.columns]
+        if existing_cols:
+            cols_to_drop.extend(existing_cols)
+
+    df = df.drop(columns=cols_to_drop, errors='ignore')
+
+    full_name_mapping = {
+        'qd1': 'gender', 'qd7': 'age', 'qd7_a': 'age_bands', 'qd2': 'macro_region', 'qd3': 'urbanization_level', 'qd10': 'work_situation', 'qd14': 'internet_access', 'qd5_ad': 'household_adults_count', 'qd5_ch': 'household_children_count',
+        'qf1_a': 'personal_budget_decisions', 'qf1': 'household_budget_decisions', 'qf4': 'expenditure_shock_capacity', 'qf8': 'retirement_plan_confidence', 'qf11': 'income_not_covering_costs', 'qf13': 'lost_income_survival_time',
+        'qp5': 'shopping_around_behavior', 'qp7_add1': 'risk_aversion',
+        'qk1': 'self_rated_knowledge', 'qk3': 'inflation_knowledge_brothers', 'qk4': 'interest_on_loan', 'qk5': 'simple_interest', 'qk6': 'compound_interest', 'qk10': 'mortgage_knowledge',
+        'qk7_1': 'know_high_return_high_risk', 'qk7_2': 'know_high_inflation_cost_living', 'qk7_3': 'know_reduce_risk_diversify', 'qk7_4': 'know_digital_contract_paper', 'qk7_5': 'know_data_targeted_offers', 'qk7_6': 'know_crypto_legal_tender',
+        'qp9_1': 'freq_check_balance_online', 'qp9_3': 'freq_pay_bills_online', 'qp9_4': 'freq_buy_online', 'qp9_5': 'freq_transfer_money_online', 'qp9_6': 'freq_manage_finance_online', 'qp9_7': 'freq_mobile_payment_shop', 'qp9_10': 'freq_roboadvisor',
+        'qs1_1': 'att_spend_over_save', 'qs1_2': 'att_risk_money', 'qs1_3': 'att_money_to_spend', 'qs1_4': 'att_satisfied_finance', 'qs1_5': 'att_watch_affairs', 'qs1_7': 'att_finance_limits_life', 'qs1_8': 'att_set_long_term_goals', 'qs1_9': 'att_trust_bank_safety', 'qs1_10': 'att_too_much_debt', 'qs1_13': 'att_good_time_crypto',
+        'qs2_1': 'beh_worry_expenses', 'qs2_2': 'beh_finances_control_life', 'qs2_3': 'beh_consider_afford', 'qs2_4': 'beh_money_left_over', 'qs2_5': 'beh_pay_bills_on_time', 'qs2_6': 'beh_share_pins', 'qs2_7': 'beh_check_regulated_provider', 'qs2_8': 'beh_share_finance_public', 'qs2_9': 'beh_consider_esg',
+        'qs3_2': 'sit_prefer_ethical_intermediary', 'qs3_3': 'sit_feel_never_have_things', 'qs3_9': 'sit_concern_money_wont_last', 'qs3_10': 'sit_just_getting_by', 'qs3_11': 'sit_live_for_today', 'qs3_12': 'sit_buy_lottery', 'qs3_13': 'sit_change_passwords',
+        'qs4_1': 'dig_safe_public_wifi', 'qs4_2': 'dig_check_website_security', 'qs4_3': 'dig_ignore_tc', 'qs4_4': 'dig_tools_facilitate', 'qs4_5': 'dig_trust_fintech', 'qs4_6': 'dig_ok_social_data_credit', 'qs4_7': 'dig_impulsive_online', 'qs4_8': 'dig_read_print_paper_over_online',
+        'qs5_4': 'esg_profit_over_env', 'qs5_5': 'esg_profit_over_social', 'qs5_6': 'esg_profit_over_gov',
+        'qd6_1': 'freq_write_doc', 'qd6_2': 'freq_email', 'qd6_3': 'freq_mobile_call', 'qd6_4': 'freq_internet_call', 'qd6_5': 'freq_social_networks', 'qd6_6': 'freq_instant_messaging', 'qd6_7': 'freq_search_online',
+        'qd9': 'educational_level', 'qd12': 'nationality', 'qd13': 'income_band'
+    }
+    df = df.rename(columns=full_name_mapping)
+    df = df.copy()
+
+    # 1. GENDER
+    df['gender'] = df['gender'].map({0: 'Woman', 1: 'Man'})
+
+    # 2. AGE GROUP 
+    def _map_age_to_band(val):
+        if val in (18, 19):      return 1
+        if 20 <= val <= 29:      return 2
+        if 30 <= val <= 39:      return 3
+        if 40 <= val <= 49:      return 4
+        if 50 <= val <= 59:      return 5
+        if 60 <= val <= 69:      return 6
+        if 70 <= val <= 79:      return 7
+        return val  
+
+    age_band_labels = {1: '18-19', 2: '20-29', 3: '30-39', 4: '40-49', 5: '50-59', 6: '60-69', 7: '70-79'}
+    age_mapped  = df['age'].apply(_map_age_to_band)
+    # Fixato il warning con replace e fillna
+    age_unified = age_mapped.replace(-99, pd.NA).fillna(df['age_bands'])
+    df['age_group'] = age_unified.map(age_band_labels)
+
+    # 3. MACRO-REGION
+    df['macro_region_label'] = df['macro_region'].map({1: 'North-West', 2: 'North-East', 3: 'Center', 4: 'South', 5: 'Islands'})
+
+    # 4. URBANIZATION LEVEL
+    df['urban_area_label'] = df['urbanization_level'].map({1: '<3k', 2: '3k-15k', 3: '15k-100k', 4: '100k-1M', 5: '>1M'})
+
+    # 5a. LIVING STATUS
+    def _derive_living_status(row):
+        summary = str(row.get('qd5_aggregated_summary', '')).lower()
+        if summary in ('', 'nan', 'none/refused'): return float('nan')
+        if 'alone' in summary: return 'Alone'
+        if 'children_under_18' in summary or 'children_over_18' in summary: return 'With_Children'
+        if 'partner' in summary: return 'With_Partner'
+        return 'Other'
+
+    df['living_status'] = df.apply(_derive_living_status, axis=1)
+
+    # 5b. HOUSEHOLD SIZE
+    adults_count   = pd.to_numeric(df['household_adults_count'], errors='coerce').fillna(0)
+    children_count = pd.to_numeric(df['household_children_count'], errors='coerce').fillna(0)
+    adults_count   = adults_count.where(adults_count > 0, 0)   
+    children_count = children_count.where(children_count > 0, 0)   
+    df['household_size'] = adults_count + children_count + 1
+
+    # 6. DIGITAL SKILLS SCORE 
+    # 6. DIGITAL SKILLS SCORE (Inversione basata sull'evidenza dei dati grezzi)
+    # 6. DIGITAL SKILLS SCORE (Scala 1-4, Inversione correttiva applicata)
+    digital_cols = [
+        'freq_write_doc', 'freq_email', 'freq_mobile_call',
+        'freq_internet_call', 'freq_social_networks',
+        'freq_instant_messaging', 'freq_search_online'
+    ]
+    
+    # 1. Converti in numerico escludendo i codici negativi (-97, -99)
+    temp_dig = df[digital_cols].apply(pd.to_numeric, errors='coerce').copy()
+    temp_dig[temp_dig <= 0] = np.nan
+    
+    # 2. Calcola la media degli item validi (ignora i NaN)
+    # Media originale: giovani ~1.5, anziani ~3.0
+    mean_raw = temp_dig.mean(axis=1)
+    
+    # 3. TRASFORMAZIONE SPECULARE 1-4
+    # Applichiamo la formula: NewValue = (Max + Min) - OldValue
+    # Ovvero: 5 - Media_Grezza
+    # Se media=1 (Max uso) -> Score = 4 (Molto Spesso)
+    # Se media=4 (Min uso) -> Score = 1 (Mai)
+    df['digital_skills_score'] = (5 - mean_raw)
+    
+    # 4. Gestione chi non usa internet
+    # Chi ha solo risposte negative o NaN viene impostato a 1 (Mai)
+    df['digital_skills_score'] = df['digital_skills_score'].fillna(1)
+    # 7. EDUCATION LEVEL 
+    edu_map = {10: 'No Education', 9: 'Primary', 8: 'Primary', 7: 'Middle School', 6: 'Middle School', 5: 'High School', 4: 'High School', 3: 'University', 2: 'University', 1: 'University'}
+    df['edu_level_grouped'] = df['educational_level'].map(edu_map)
+
+    # 8. EMPLOYMENT STATUS 
+    work_status_map = {1: 'Active', 2: 'Active', 3: 'Active', 4: 'Inactive', 6: 'Inactive', 8: 'Inactive', 9: 'Inactive', 5: 'Vulnerable', 7: 'Vulnerable', 10: 'Inactive'}
+    df['work_status'] = df['work_situation'].map(work_status_map)
+
+    # 9. NATIONALITY
+    df['is_italian'] = df['nationality'].map({1: 'Italian', 0: 'Other'})
+
+    # 10. NET MONTHLY INCOME BAND
+    income_map = {1: '<=1750€', 2: '1751-2900€', 3: '>2900€', -97: 'Unknown', -99: 'Unknown'}
+    df['income_label'] = df['income_band'].map(income_map).fillna('Unknown')
+
+    # 11. INTERNET ACCESS 
+    df['internet_access_label'] = df['internet_access'].map({1: 'Yes', 0: 'No'})
+
+    print(df.columns)
+
+    return df
 
 
 
@@ -443,6 +676,17 @@ def main():
         df = preprocess_financial_variables(df)
 
         new_df_main, new_df_active = preprocess_products_and_digital(df)
+
+        df = clean_qk(new_df_main)
+
+        df_per_zayn = calcola_e_sostituisci_score(df)
+
+        df = engineer_demographic_features(df_per_zayn)
+
+        print(df.columns.tolist())
+        print(df.shape)
+
+        df.to_csv("cleaned_df.csv")
 
     
     except Exception as e:
