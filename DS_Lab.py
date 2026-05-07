@@ -3,6 +3,9 @@ import numpy as np
 import os
 import matplotlib.pyplot as plt
 import seaborn as sns
+from dotenv import load_dotenv
+
+load_dotenv()
 
 def preprocess_complete_iacofi(df):
     """
@@ -674,7 +677,7 @@ def engineer_demographic_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def main():
-    file_path = "C:/Users/HP/Downloads/Database_Bancaditalia/Database_ENG.csv"
+    file_path = os.getenv("DATA_PATH")
     try:
         # 1. Caricamento e Standardizzazione Iniziale
         df = pd.read_csv(file_path)
@@ -690,14 +693,14 @@ def main():
 
         print("Colonne Finali Main:", df_final.columns.tolist())
         print("Dimensioni Main:", df_final.shape)
-        df_final.to_csv("C:/Users/HP/Downloads/Database_Bancaditalia/cleaned_df.csv", index=False)
+        df_final.to_csv("cleaned_df2.csv", index=False)
 
         # 3. Processamento per df_active
         df_active = clean_qk(df_active)
         df_active = calcola_e_sostituisci_score(df_active)
         df_active_final = engineer_demographic_features(df_active)
         
-        df_active_final.to_csv("C:/Users/HP/Downloads/Database_Bancaditalia/cleaned_active_df.csv", index=False)
+        df_active_final.to_csv("cleaned_active_df2.csv", index=False)
     
     except Exception as e:
         print(f"An error occurred: {e}")
