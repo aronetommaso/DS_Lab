@@ -528,10 +528,12 @@ def plotting_financial_variables(df):
 def engineer_demographic_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     Step 3: Full Demographic & Background Feature Engineering (IACOFI 2023).
+    Versione Fixata: Previene sovrapposizioni, risolve gli aggregati e droppa le vecchie età.
     """
-
+    df = df.copy() # Evita i SettingWithCopyWarning
     df.columns = [col.lower() for col in df.columns]
 
+    # --- 1. AGGIUNTA LOGICA DI AGGREGAZIONE (Prima mancava la funzione aggregate_options) ---
     multi_option_groups = {
         'qd5': { 'qd5_1': 'alone', 'qd5_2': 'partner', 'qd5_3': 'children_under_18', 'qd5_4': 'children_over_18', 'qd5_5': 'adult_relatives', 'qd5_6': 'friends', 'qd5_7': 'other_adults'},
         'qf2': { 'qf2_1': 'plan_budget', 'qf2_2': 'note_spending', 'qf2_3': 'separate_bills_money', 'qf2_4': 'note_upcoming_bills', 'qf2_5': 'use_banking_app', 'qf2_6': 'auto_payments'},
@@ -548,14 +550,23 @@ def engineer_demographic_features(df: pd.DataFrame) -> pd.DataFrame:
     multi_option_groups['qp2'] = {f'qp2_{k}': v for k, v in products_suffix.items()} 
     multi_option_groups['qp3'] = {f'qp3_{k}': v for k, v in products_suffix.items()} 
 
+    # Funzione per condensare i "tick all that apply" in una stringa
+    def aggregate_options(row, col_map):
+        active = [label for col, label in col_map.items() if col in row and row[col] == 1]
+        return ", ".join(active) if active else "None/Refused"
+
     cols_to_drop = []
     for group_name, col_map in multi_option_groups.items():
         existing_cols = [c for c in col_map.keys() if c in df.columns]
         if existing_cols:
+            # NOVITA: Crea la variabile riassuntiva PRIMA di eliminare le colonne
+            new_col_name = f"{group_name}_aggregated_summary"
+            df[new_col_name] = df.apply(lambda row: aggregate_options(row, col_map), axis=1)
             cols_to_drop.extend(existing_cols)
 
     df = df.drop(columns=cols_to_drop, errors='ignore')
 
+    # --- 2. MAPPING DI TUTTE LE VARIABILI SINGOLE ---
     full_name_mapping = {
         'qd1': 'gender', 'qd7': 'age', 'qd7_a': 'age_bands', 'qd2': 'macro_region', 'qd3': 'urbanization_level', 'qd10': 'work_situation', 'qd14': 'internet_access', 'qd5_ad': 'household_adults_count', 'qd5_ch': 'household_children_count',
         'qf1_a': 'personal_budget_decisions', 'qf1': 'household_budget_decisions', 'qf4': 'expenditure_shock_capacity', 'qf8': 'retirement_plan_confidence', 'qf11': 'income_not_covering_costs', 'qf13': 'lost_income_survival_time',
@@ -572,27 +583,35 @@ def engineer_demographic_features(df: pd.DataFrame) -> pd.DataFrame:
         'qd9': 'educational_level', 'qd12': 'nationality', 'qd13': 'income_band'
     }
     df = df.rename(columns=full_name_mapping)
-    df = df.copy()
 
     # 1. GENDER
     df['gender'] = df['gender'].map({0: 'Woman', 1: 'Man'})
 
-    # 2. AGE GROUP 
+    # 2. AGE GROUP (Risolto il problema stringhe/NaN che faceva sparire i gruppi)
     def _map_age_to_band(val):
-        if val in (18, 19):      return 1
-        if 20 <= val <= 29:      return 2
-        if 30 <= val <= 39:      return 3
-        if 40 <= val <= 49:      return 4
-        if 50 <= val <= 59:      return 5
-        if 60 <= val <= 69:      return 6
-        if 70 <= val <= 79:      return 7
-        return val  
+        try:
+            val = float(val)
+            if pd.isna(val) or val < 0: return pd.NA
+            if 18 <= val <= 19:      return 1
+            if 20 <= val <= 29:      return 2
+            if 30 <= val <= 39:      return 3
+            if 40 <= val <= 49:      return 4
+            if 50 <= val <= 59:      return 5
+            if 60 <= val <= 69:      return 6
+            if 70 <= val <= 79:      return 7
+            return val  
+        except ValueError:
+            return pd.NA
 
     age_band_labels = {1: '18-19', 2: '20-29', 3: '30-39', 4: '40-49', 5: '50-59', 6: '60-69', 7: '70-79'}
     age_mapped  = df['age'].apply(_map_age_to_band)
-    # Fixato il warning con replace e fillna
-    age_unified = age_mapped.replace(-99, pd.NA).fillna(df['age_bands'])
+    age_unified = age_mapped.fillna(df['age_bands']).replace([-99, -97], pd.NA)
+    
+    # Crea la variabile finale pulita
     df['age_group'] = age_unified.map(age_band_labels)
+    
+    # NOVITA: ELIMINA le due vecchie colonne per non vederle più nel file finale!
+    df = df.drop(columns=['age', 'age_bands'], errors='ignore')
 
     # 3. MACRO-REGION
     df['macro_region_label'] = df['macro_region'].map({1: 'North-West', 2: 'North-East', 3: 'Center', 4: 'South', 5: 'Islands'})
@@ -600,7 +619,7 @@ def engineer_demographic_features(df: pd.DataFrame) -> pd.DataFrame:
     # 4. URBANIZATION LEVEL
     df['urban_area_label'] = df['urbanization_level'].map({1: '<3k', 2: '3k-15k', 3: '15k-100k', 4: '100k-1M', 5: '>1M'})
 
-    # 5a. LIVING STATUS
+    # 5a. LIVING STATUS (Adesso trova il campo 'qd5_aggregated_summary')
     def _derive_living_status(row):
         summary = str(row.get('qd5_aggregated_summary', '')).lower()
         if summary in ('', 'nan', 'none/refused'): return float('nan')
@@ -619,32 +638,19 @@ def engineer_demographic_features(df: pd.DataFrame) -> pd.DataFrame:
     df['household_size'] = adults_count + children_count + 1
 
     # 6. DIGITAL SKILLS SCORE 
-    # 6. DIGITAL SKILLS SCORE (Inversione basata sull'evidenza dei dati grezzi)
-    # 6. DIGITAL SKILLS SCORE (Scala 1-4, Inversione correttiva applicata)
     digital_cols = [
         'freq_write_doc', 'freq_email', 'freq_mobile_call',
         'freq_internet_call', 'freq_social_networks',
         'freq_instant_messaging', 'freq_search_online'
     ]
     
-    # 1. Converti in numerico escludendo i codici negativi (-97, -99)
     temp_dig = df[digital_cols].apply(pd.to_numeric, errors='coerce').copy()
     temp_dig[temp_dig <= 0] = np.nan
-    
-    # 2. Calcola la media degli item validi (ignora i NaN)
-    # Media originale: giovani ~1.5, anziani ~3.0
     mean_raw = temp_dig.mean(axis=1)
     
-    # 3. TRASFORMAZIONE SPECULARE 1-4
-    # Applichiamo la formula: NewValue = (Max + Min) - OldValue
-    # Ovvero: 5 - Media_Grezza
-    # Se media=1 (Max uso) -> Score = 4 (Molto Spesso)
-    # Se media=4 (Min uso) -> Score = 1 (Mai)
     df['digital_skills_score'] = (5 - mean_raw)
-    
-    # 4. Gestione chi non usa internet
-    # Chi ha solo risposte negative o NaN viene impostato a 1 (Mai)
     df['digital_skills_score'] = df['digital_skills_score'].fillna(1)
+    
     # 7. EDUCATION LEVEL 
     edu_map = {10: 'No Education', 9: 'Primary', 8: 'Primary', 7: 'Middle School', 6: 'Middle School', 5: 'High School', 4: 'High School', 3: 'University', 2: 'University', 1: 'University'}
     df['edu_level_grouped'] = df['educational_level'].map(edu_map)
@@ -663,37 +669,38 @@ def engineer_demographic_features(df: pd.DataFrame) -> pd.DataFrame:
     # 11. INTERNET ACCESS 
     df['internet_access_label'] = df['internet_access'].map({1: 'Yes', 0: 'No'})
 
-    print(df.columns)
-
     return df
 
 
 
 def main():
-    file_path = "c:/Users/tomma/Downloads/Database_ASCII_EN/Database_ENG.csv"
+    file_path = "C:/Users/HP/Downloads/Database_Bancaditalia/Database_ENG.csv"
     try:
+        # 1. Caricamento e Standardizzazione Iniziale
         df = pd.read_csv(file_path)
+        df.columns = [col.lower() for col in df.columns] 
+
+        # 2. Pipeline di Processamento
         df = preprocess_financial_variables(df)
+        df_main, df_active = preprocess_products_and_digital(df)
+        
+        df_main = clean_qk(df_main)
+        df_main = calcola_e_sostituisci_score(df_main)
+        df_final = engineer_demographic_features(df_main)
 
-        new_df_main, new_df_active = preprocess_products_and_digital(df)
+        print("Colonne Finali Main:", df_final.columns.tolist())
+        print("Dimensioni Main:", df_final.shape)
+        df_final.to_csv("C:/Users/HP/Downloads/Database_Bancaditalia/cleaned_df.csv", index=False)
 
-        df = clean_qk(new_df_main)
-
-        df_per_zayn = calcola_e_sostituisci_score(df)
-
-        df = engineer_demographic_features(df_per_zayn)
-
-        print(df.columns.tolist())
-        print(df.shape)
-
-        df.to_csv("cleaned_df.csv")
-
+        # 3. Processamento per df_active
+        df_active = clean_qk(df_active)
+        df_active = calcola_e_sostituisci_score(df_active)
+        df_active_final = engineer_demographic_features(df_active)
+        
+        df_active_final.to_csv("C:/Users/HP/Downloads/Database_Bancaditalia/cleaned_active_df.csv", index=False)
     
     except Exception as e:
         print(f"An error occurred: {e}")
-
-
-
 
 if __name__ == "__main__":
     main()
