@@ -562,9 +562,6 @@ def engineer_demographic_features(df: pd.DataFrame) -> pd.DataFrame:
     for group_name, col_map in multi_option_groups.items():
         existing_cols = [c for c in col_map.keys() if c in df.columns]
         if existing_cols:
-            # NOVITA: Crea la variabile riassuntiva PRIMA di eliminare le colonne
-            new_col_name = f"{group_name}_aggregated_summary"
-            df[new_col_name] = df.apply(lambda row: aggregate_options(row, col_map), axis=1)
             cols_to_drop.extend(existing_cols)
 
     df = df.drop(columns=cols_to_drop, errors='ignore')
@@ -572,16 +569,6 @@ def engineer_demographic_features(df: pd.DataFrame) -> pd.DataFrame:
     # --- 2. MAPPING DI TUTTE LE VARIABILI SINGOLE ---
     full_name_mapping = {
         'qd1': 'gender', 'qd7': 'age', 'qd7_a': 'age_bands', 'qd2': 'macro_region', 'qd3': 'urbanization_level', 'qd10': 'work_situation', 'qd14': 'internet_access', 'qd5_ad': 'household_adults_count', 'qd5_ch': 'household_children_count',
-        'qf1_a': 'personal_budget_decisions', 'qf1': 'household_budget_decisions', 'qf4': 'expenditure_shock_capacity', 'qf8': 'retirement_plan_confidence', 'qf11': 'income_not_covering_costs', 'qf13': 'lost_income_survival_time',
-        'qp5': 'shopping_around_behavior', 'qp7_add1': 'risk_aversion',
-        'qk1': 'self_rated_knowledge', 'qk3': 'inflation_knowledge_brothers', 'qk4': 'interest_on_loan', 'qk5': 'simple_interest', 'qk6': 'compound_interest', 'qk10': 'mortgage_knowledge',
-        'qk7_1': 'know_high_return_high_risk', 'qk7_2': 'know_high_inflation_cost_living', 'qk7_3': 'know_reduce_risk_diversify', 'qk7_4': 'know_digital_contract_paper', 'qk7_5': 'know_data_targeted_offers', 'qk7_6': 'know_crypto_legal_tender',
-        'qp9_1': 'freq_check_balance_online', 'qp9_3': 'freq_pay_bills_online', 'qp9_4': 'freq_buy_online', 'qp9_5': 'freq_transfer_money_online', 'qp9_6': 'freq_manage_finance_online', 'qp9_7': 'freq_mobile_payment_shop', 'qp9_10': 'freq_roboadvisor',
-        'qs1_1': 'att_spend_over_save', 'qs1_2': 'att_risk_money', 'qs1_3': 'att_money_to_spend', 'qs1_4': 'att_satisfied_finance', 'qs1_5': 'att_watch_affairs', 'qs1_7': 'att_finance_limits_life', 'qs1_8': 'att_set_long_term_goals', 'qs1_9': 'att_trust_bank_safety', 'qs1_10': 'att_too_much_debt', 'qs1_13': 'att_good_time_crypto',
-        'qs2_1': 'beh_worry_expenses', 'qs2_2': 'beh_finances_control_life', 'qs2_3': 'beh_consider_afford', 'qs2_4': 'beh_money_left_over', 'qs2_5': 'beh_pay_bills_on_time', 'qs2_6': 'beh_share_pins', 'qs2_7': 'beh_check_regulated_provider', 'qs2_8': 'beh_share_finance_public', 'qs2_9': 'beh_consider_esg',
-        'qs3_2': 'sit_prefer_ethical_intermediary', 'qs3_3': 'sit_feel_never_have_things', 'qs3_9': 'sit_concern_money_wont_last', 'qs3_10': 'sit_just_getting_by', 'qs3_11': 'sit_live_for_today', 'qs3_12': 'sit_buy_lottery', 'qs3_13': 'sit_change_passwords',
-        'qs4_1': 'dig_safe_public_wifi', 'qs4_2': 'dig_check_website_security', 'qs4_3': 'dig_ignore_tc', 'qs4_4': 'dig_tools_facilitate', 'qs4_5': 'dig_trust_fintech', 'qs4_6': 'dig_ok_social_data_credit', 'qs4_7': 'dig_impulsive_online', 'qs4_8': 'dig_read_print_paper_over_online',
-        'qs5_4': 'esg_profit_over_env', 'qs5_5': 'esg_profit_over_social', 'qs5_6': 'esg_profit_over_gov',
         'qd6_1': 'freq_write_doc', 'qd6_2': 'freq_email', 'qd6_3': 'freq_mobile_call', 'qd6_4': 'freq_internet_call', 'qd6_5': 'freq_social_networks', 'qd6_6': 'freq_instant_messaging', 'qd6_7': 'freq_search_online',
         'qd9': 'educational_level', 'qd12': 'nationality', 'qd13': 'income_band'
     }

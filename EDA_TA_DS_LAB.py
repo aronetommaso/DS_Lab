@@ -515,17 +515,17 @@ def assign_persona_names(profile_df: pd.DataFrame) -> dict:
         risk   = row.get("risk_aversion_class", 3)   # lower = more risk tolerant
 
         if invest > 1.5 and know > 3 and risk < 2.5:
-            label = "📈 Sophisticated Investors"
+            label = "Sophisticated Investors"
         elif digital > 3 and plan > 3 and debt < 1:
-            label = "💻 Digitally-Engaged Planners"
+            label = "Digitally-Engaged Planners"
         elif debt > 2 and invest < 0.5:
-            label = "💳 Debt-Reliant Households"
+            label = "Debt-Reliant Households"
         elif plan < 2 and invest < 0.5 and digital < 1.5:
-            label = "😴 Financially Disengaged"
+            label = "Financially Disengaged"
         elif risk > 3 and plan > 2:
-            label = "🛡️ Cautious Savers"
+            label = "Cautious Savers"
         elif invest > 0.8 and digital > 2 and risk < 3:
-            label = "🌱 Emerging Investors"
+            label = "Emerging Investors"
         else:
             label = f"Cluster {cluster_id + 1}"
 
@@ -811,7 +811,7 @@ def plot_digital_deep_dive(df: pd.DataFrame) -> None:
 
 def main():
     # ── Load ────────────────────────────────────────────────────────────────
-    df = load_data("cleaned_df.csv")
+    df = load_data("cleaned_df2.csv")
 
     # ── EDA ─────────────────────────────────────────────────────────────────
     eda_demographics(df)
