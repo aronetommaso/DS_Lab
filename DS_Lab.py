@@ -562,6 +562,8 @@ def engineer_demographic_features(df: pd.DataFrame) -> pd.DataFrame:
     for group_name, col_map in multi_option_groups.items():
         existing_cols = [c for c in col_map.keys() if c in df.columns]
         if existing_cols:
+            new_col_name = f"{group_name}_aggregated_summary"
+            df[new_col_name] = df.apply(lambda row: aggregate_options(row, col_map), axis=1)
             cols_to_drop.extend(existing_cols)
 
     df = df.drop(columns=cols_to_drop, errors='ignore')
@@ -658,6 +660,21 @@ def engineer_demographic_features(df: pd.DataFrame) -> pd.DataFrame:
 
     # 11. INTERNET ACCESS 
     df['internet_access_label'] = df['internet_access'].map({1: 'Yes', 0: 'No'})
+
+        # --- 3. PULIZIA FINALE ---
+    # Manteniamo solo le variabili trasformate ed eliminiamo quelle originali/intermedie
+    cols_to_drop_final = [
+        'macro_region', 'urbanization_level', 'work_situation', 'internet_access',
+        'household_adults_count', 'household_children_count', 'educational_level',
+        'nationality', 'income_band', 'freq_write_doc', 'freq_email', 'freq_mobile_call',
+        'freq_internet_call', 'freq_social_networks', 'freq_instant_messaging', 'freq_search_online'
+    ]
+    cols_to_drop_final.extend([c for c in df.columns if c.endswith('_aggregated_summary')])
+    raw_q_cols = [c for c in df.columns if c.startswith(('qd', 'qf', 'qp', 'qk', 'qs')) and not c.endswith('_clean')]
+    cols_to_drop_final.extend(raw_q_cols)
+    
+    df = df.drop(columns=cols_to_drop_final, errors='ignore')
+
 
     return df
 

@@ -51,6 +51,40 @@ def save_plot(fig: plt.Figure, name: str) -> None:
     print(f"  [Saved] {path}")
 
 # ════════════════════════════════════════════════════════════════════════════
+# PHASE 0: OVERALL MISSINGNESS
+# ════════════════════════════════════════════════════════════════════════════
+
+def plot_column_missingness(df: pd.DataFrame, top_n: int = 25) -> None:
+    """
+    Calculates and plots the percentage of missing values for the top N columns.
+    """
+    print("\n[Phase 0] Analyzing column-wise missingness ...")
+
+    missing_pct = df.isna().mean() * 100
+    missing_pct = missing_pct[missing_pct > 0].sort_values(ascending=False)
+
+    if missing_pct.empty:
+        print("  No missing values found in the dataset. Skipping plot.")
+        return
+
+    top_missing = missing_pct.head(top_n)
+
+    fig, ax = plt.subplots(figsize=(12, 8))
+    bars = sns.barplot(x=top_missing.values, y=top_missing.index, ax=ax, palette='viridis_r', orient='h')
+
+    ax.set_title(f'Top {top_n} Colonne con più Valori Mancanti', fontweight="bold", fontsize=14)
+    ax.set_xlabel('Percentuale di Valori Mancanti (%)', fontsize=11)
+    ax.set_ylabel('')
+    ax.grid(axis='x', linestyle='--', alpha=0.6)
+
+    # Add percentage labels
+    for p in ax.patches:
+        width = p.get_width()
+        ax.text(width + 0.3, p.get_y() + p.get_height() / 2, f'{width:.1f}%', va='center', ha='left', fontsize=9)
+
+    save_plot(fig, "00_column_missingness_overview")
+
+# ════════════════════════════════════════════════════════════════════════════
 # PHASE 1: TARGET DEFINITION
 # ════════════════════════════════════════════════════════════════════════════
 
@@ -402,6 +436,9 @@ def run_missingness_pipeline():
     df = pd.read_csv("cleaned_df2.csv", low_memory=False)
     df.columns = [c.lower().strip() for c in df.columns]
     
+    # Phase 0: Plot overall missingness
+    plot_column_missingness(df, top_n=25)
+
     # Target Definition: You can change strategy to 'global' and adjust the threshold
     df = define_missingness_target(df, strategy='income')
     
