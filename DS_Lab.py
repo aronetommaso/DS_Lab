@@ -719,14 +719,14 @@ def main():
 
         print("Colonne Finali Main:", df_final.columns.tolist())
         print("Dimensioni Main:", df_final.shape)
-        df_final.to_csv(r"C:\Users\HP\Desktop\data_science\primo_anno\DSLab\DS_Lab\cleaned_df2.csv", index=False)
+        df_final.to_csv(r"cleaned_df2.csv", index=False)
 
         # 3. Processamento per df_active
         df_active = clean_qk(df_active)
         df_active = calcola_e_sostituisci_score(df_active)
         df_active_final = engineer_demographic_features(df_active)
         
-        df_active_final.to_csv(r"C:\Users\HP\Desktop\data_science\primo_anno\DSLab\DS_Lab\cleaned_active_df2.csv", index=False)
+        df_active_final.to_csv(r"cleaned_active_df2.csv", index=False)
     
     except Exception as e:
         print(f"An error occurred: {e}")
