@@ -316,14 +316,13 @@ def clean_qk(df):
     """
 
     df = df.copy()
-
     df.columns = [col.lower() for col in df.columns]
 
     # QK1: subjective knowledge
     df["qk1_clean"] = 4 # not defined
-    df.loc[df["qk1"].isin([1, 2]), "qk1_clean"] = 1 #high
-    df.loc[df["qk1"].isin([4, 5]), "qk1_clean"] = 2 #medium-low
-    df.loc[df["qk1"].isin([3]), "qk1_clean"] = 3 #medium-low
+    df.loc[df["qk1"].isin([1, 2]), "qk1_clean"] = 1 # high
+    df.loc[df["qk1"].isin([4, 5]), "qk1_clean"] = 2 # medium-low
+    df.loc[df["qk1"].isin([3]), "qk1_clean"] = 3 # medium
 
     # Objective QK questions: correct = 1, wrong/missing = 0
     df["qk3_clean"] = (df["qk3"] == 3).astype(int)
@@ -334,21 +333,44 @@ def clean_qk(df):
 
     # QK7: True/False battery, score 0-6
     qk7_correct = {
-        "qk7_1": 1,
-        "qk7_2": 1,
-        "qk7_3": 1,
-        "qk7_4": 0,
-        "qk7_5": 1,
-        "qk7_6": 0
+        "qk7_1": 1, "qk7_2": 1, "qk7_3": 1,
+        "qk7_4": 0, "qk7_5": 1, "qk7_6": 0
     }
 
     df["qk7_clean"] = 0
-
     for col, correct_value in qk7_correct.items():
         if col in df.columns:
             df["qk7_clean"] += (df[col] == correct_value).astype(int)
+            
+    # --- CALCOLO GAP CLASS (INTEGRATO DALLA VECCHIA EDA) ---
+    obj_cols = [c for c in ['qk3_clean', 'qk4_clean', 'qk5_clean', 'qk6_clean', 'qk10_clean'] if c in df.columns]
+    
+    # Temporaneamente normalizziamo qk7 da 0 a 1 per unirlo agli altri
+    if 'qk7_clean' in df.columns:
+        df['qk7_norm'] = df['qk7_clean'] / 6
+        obj_cols_all = obj_cols + ['qk7_norm']
+    else:
+        obj_cols_all = obj_cols
 
-    return df
+    # Calcolo punteggio oggettivo (0-100)
+    df['obj_score'] = df[obj_cols_all].mean(axis=1) * 100
+    
+    # Calcolo punteggio soggettivo (0-100) basato su qk1
+    df['subj_score'] = df['qk1_clean'].map({1: 100, 2: 67, 3: 33, 4: 0})
+    
+    # Differenza (Gap) e Categoria Semantica
+    df['gap'] = df['subj_score'] - df['obj_score']
+    df['subj_knowledge_label'] = df['qk1_clean'].map({1: 'High', 2: 'Medium', 3: 'Low', 4: 'Not defined'})
+
+    def classify_gap(g):
+        if pd.isna(g): return np.nan
+        if g >  15:    return 'Overconfident'
+        if g < -15:    return 'Underconfident'
+        return 'Calibrated'
+
+    df['gap_class'] = df['gap'].apply(classify_gap)
+    df = df.drop(columns=['qk7_norm', 'subj_score', 'gap'])
+    return(df)
 
 
 def preprocess_products_and_digital(df):
@@ -697,14 +719,14 @@ def main():
 
         print("Colonne Finali Main:", df_final.columns.tolist())
         print("Dimensioni Main:", df_final.shape)
-        df_final.to_csv("cleaned_df2.csv", index=False)
+        df_final.to_csv(r"C:\Users\HP\Desktop\data_science\primo_anno\DSLab\DS_Lab\cleaned_df2.csv", index=False)
 
         # 3. Processamento per df_active
         df_active = clean_qk(df_active)
         df_active = calcola_e_sostituisci_score(df_active)
         df_active_final = engineer_demographic_features(df_active)
         
-        df_active_final.to_csv("cleaned_active_df2.csv", index=False)
+        df_active_final.to_csv(r"C:\Users\HP\Desktop\data_science\primo_anno\DSLab\DS_Lab\cleaned_active_df2.csv", index=False)
     
     except Exception as e:
         print(f"An error occurred: {e}")
