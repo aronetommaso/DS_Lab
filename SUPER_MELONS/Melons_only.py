@@ -3,8 +3,12 @@ import numpy as np
 import os
 import matplotlib.pyplot as plt
 import seaborn as sns
-import statsmodels.api as sm
 from dotenv import load_dotenv
+import traceback
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
+from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
 
 load_dotenv()
 
@@ -302,16 +306,28 @@ def preprocess_financial_variables(df):
 def clean_qk(df):
     """
     Cleans QK financial knowledge variables.
-    """
-    df = df.copy()
 
+    qk1_clean:
+        high = qk1 1/2
+        medium-low = qk1 3/4
+        not defined = missing/refused/other
+
+    qk3, qk4, qk5, qk6, qk10:
+        correct = 1
+        wrong/missing = 0
+
+    qk7_clean:
+        score from 0 to 6
+    """
+
+    df = df.copy()
     df.columns = [col.lower() for col in df.columns]
 
     # QK1: subjective knowledge
     df["qk1_clean"] = 4 # not defined
-    df.loc[df["qk1"].isin([1, 2]), "qk1_clean"] = 1 #high
-    df.loc[df["qk1"].isin([4, 5]), "qk1_clean"] = 2 #medium-low
-    df.loc[df["qk1"].isin([3]), "qk1_clean"] = 3 #medium
+    df.loc[df["qk1"].isin([1, 2]), "qk1_clean"] = 1 # high
+    df.loc[df["qk1"].isin([4, 5]), "qk1_clean"] = 2 # medium-low
+    df.loc[df["qk1"].isin([3]), "qk1_clean"] = 3 # medium
 
     # Objective QK questions: correct = 1, wrong/missing = 0
     df["qk3_clean"] = (df["qk3"] == 3).astype(int)
@@ -322,21 +338,44 @@ def clean_qk(df):
 
     # QK7: True/False battery, score 0-6
     qk7_correct = {
-        "qk7_1": 1,
-        "qk7_2": 1,
-        "qk7_3": 1,
-        "qk7_4": 0,
-        "qk7_5": 1,
-        "qk7_6": 0
+        "qk7_1": 1, "qk7_2": 1, "qk7_3": 1,
+        "qk7_4": 0, "qk7_5": 1, "qk7_6": 0
     }
 
     df["qk7_clean"] = 0
-
     for col, correct_value in qk7_correct.items():
         if col in df.columns:
             df["qk7_clean"] += (df[col] == correct_value).astype(int)
+            
+    # --- CALCOLO GAP CLASS (INTEGRATO DALLA VECCHIA EDA) ---
+    obj_cols = [c for c in ['qk3_clean', 'qk4_clean', 'qk5_clean', 'qk6_clean', 'qk10_clean'] if c in df.columns]
+    
+    # Temporaneamente normalizziamo qk7 da 0 a 1 per unirlo agli altri
+    if 'qk7_clean' in df.columns:
+        df['qk7_norm'] = df['qk7_clean'] / 6
+        obj_cols_all = obj_cols + ['qk7_norm']
+    else:
+        obj_cols_all = obj_cols
 
-    return df
+    # Calcolo punteggio oggettivo (0-100)
+    df['obj_score'] = df[obj_cols_all].mean(axis=1) * 100
+    
+    # Calcolo punteggio soggettivo (0-100) basato su qk1
+    df['subj_score'] = df['qk1_clean'].map({1: 100, 2: 67, 3: 33, 4: 0})
+    
+    # Differenza (Gap) e Categoria Semantica
+    df['gap'] = df['subj_score'] - df['obj_score']
+    df['subj_knowledge_label'] = df['qk1_clean'].map({1: 'High', 2: 'Medium', 3: 'Low', 4: 'Not defined'})
+
+    def classify_gap(g):
+        if pd.isna(g): return np.nan
+        if g >  15:    return 'Overconfident'
+        if g < -15:    return 'Underconfident'
+        return 'Calibrated'
+
+    df['gap_class'] = df['gap'].apply(classify_gap)
+    df = df.drop(columns=['qk7_norm', 'subj_score', 'gap'])
+    return(df)
 
 
 def preprocess_products_and_digital(df):
@@ -550,7 +589,6 @@ def engineer_demographic_features(df: pd.DataFrame) -> pd.DataFrame:
     for group_name, col_map in multi_option_groups.items():
         existing_cols = [c for c in col_map.keys() if c in df.columns]
         if existing_cols:
-            # NOVITA: Crea la variabile riassuntiva PRIMA di eliminare le colonne
             new_col_name = f"{group_name}_aggregated_summary"
             df[new_col_name] = df.apply(lambda row: aggregate_options(row, col_map), axis=1)
             cols_to_drop.extend(existing_cols)
@@ -560,16 +598,6 @@ def engineer_demographic_features(df: pd.DataFrame) -> pd.DataFrame:
     # --- 2. MAPPING DI TUTTE LE VARIABILI SINGOLE ---
     full_name_mapping = {
         'qd1': 'gender', 'qd7': 'age', 'qd7_a': 'age_bands', 'qd2': 'macro_region', 'qd3': 'urbanization_level', 'qd10': 'work_situation', 'qd14': 'internet_access', 'qd5_ad': 'household_adults_count', 'qd5_ch': 'household_children_count',
-        'qf1_a': 'personal_budget_decisions', 'qf1': 'household_budget_decisions', 'qf4': 'expenditure_shock_capacity', 'qf8': 'retirement_plan_confidence', 'qf11': 'income_not_covering_costs', 'qf13': 'lost_income_survival_time',
-        'qp5': 'shopping_around_behavior', 'qp7_add1': 'risk_aversion',
-        #'qk1': 'self_rated_knowledge', 'qk3': 'inflation_knowledge_brothers', 'qk4': 'interest_on_loan', 'qk5': 'simple_interest', 'qk6': 'compound_interest', 'qk10': 'mortgage_knowledge',
-        #'qk7_1': 'know_high_return_high_risk', 'qk7_2': 'know_high_inflation_cost_living', 'qk7_3': 'know_reduce_risk_diversify', 'qk7_4': 'know_digital_contract_paper', 'qk7_5': 'know_data_targeted_offers', 'qk7_6': 'know_crypto_legal_tender',
-        'qp9_1': 'freq_check_balance_online', 'qp9_3': 'freq_pay_bills_online', 'qp9_4': 'freq_buy_online', 'qp9_5': 'freq_transfer_money_online', 'qp9_6': 'freq_manage_finance_online', 'qp9_7': 'freq_mobile_payment_shop', 'qp9_10': 'freq_roboadvisor',
-        'qs1_1': 'att_spend_over_save', 'qs1_2': 'att_risk_money', 'qs1_3': 'att_money_to_spend', 'qs1_4': 'att_satisfied_finance', 'qs1_5': 'att_watch_affairs', 'qs1_7': 'att_finance_limits_life', 'qs1_8': 'att_set_long_term_goals', 'qs1_9': 'att_trust_bank_safety', 'qs1_10': 'att_too_much_debt', 'qs1_13': 'att_good_time_crypto',
-        'qs2_1': 'beh_worry_expenses', 'qs2_2': 'beh_finances_control_life', 'qs2_3': 'beh_consider_afford', 'qs2_4': 'beh_money_left_over', 'qs2_5': 'beh_pay_bills_on_time', 'qs2_6': 'beh_share_pins', 'qs2_7': 'beh_check_regulated_provider', 'qs2_8': 'beh_share_finance_public', 'qs2_9': 'beh_consider_esg',
-        'qs3_2': 'sit_prefer_ethical_intermediary', 'qs3_3': 'sit_feel_never_have_things', 'qs3_9': 'sit_concern_money_wont_last', 'qs3_10': 'sit_just_getting_by', 'qs3_11': 'sit_live_for_today', 'qs3_12': 'sit_buy_lottery', 'qs3_13': 'sit_change_passwords',
-        'qs4_1': 'dig_safe_public_wifi', 'qs4_2': 'dig_check_website_security', 'qs4_3': 'dig_ignore_tc', 'qs4_4': 'dig_tools_facilitate', 'qs4_5': 'dig_trust_fintech', 'qs4_6': 'dig_ok_social_data_credit', 'qs4_7': 'dig_impulsive_online', 'qs4_8': 'dig_read_print_paper_over_online',
-        'qs5_4': 'esg_profit_over_env', 'qs5_5': 'esg_profit_over_social', 'qs5_6': 'esg_profit_over_gov',
         'qd6_1': 'freq_write_doc', 'qd6_2': 'freq_email', 'qd6_3': 'freq_mobile_call', 'qd6_4': 'freq_internet_call', 'qd6_5': 'freq_social_networks', 'qd6_6': 'freq_instant_messaging', 'qd6_7': 'freq_search_online',
         'qd9': 'educational_level', 'qd12': 'nationality', 'qd13': 'income_band'
     }
@@ -660,518 +688,224 @@ def engineer_demographic_features(df: pd.DataFrame) -> pd.DataFrame:
     # 11. INTERNET ACCESS 
     df['internet_access_label'] = df['internet_access'].map({1: 'Yes', 0: 'No'})
 
-    return df
-
-####################
-# EDA CLE ########
-####################
-
-def eda_research(df, output_dir='eda_research_2'):
-    """
-    EDA: 'Le persone tendono a misvalutare le proprie conoscenze finanziarie?'
- 
-    LOGICA UNICA per step 6 e 7:
-      Asse X   = categorie della variabile di interesse
-      Barre    = % Overconfident / Calibrated / Underconfident
-                 normalizzata PER RIGA (dentro ogni categoria della variabile)
-      Domanda  : 'Chi appartiene a questa categoria — tende a essere
-                  overconfident, calibrated o underconfident?'
-    """
-    os.makedirs(output_dir, exist_ok=True)
-    df = df.copy()
- 
-    plt.rcParams.update({
-        'font.size': 12, 'axes.titlesize': 13,
-        'axes.labelsize': 11, 'xtick.labelsize': 10, 'ytick.labelsize': 10,
-    })
- 
-    BLUE   = '#3266ad'
-    ORANGE = '#d85a30'
-    GREY   = '#73726c'
-    LGREY  = '#d0cec4'
- 
-    GC_ORDER  = ['Overconfident', 'Calibrated', 'Underconfident']
-    GC_COLORS = [ORANGE, BLUE, GREY]
- 
-    def save(name):
-        plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, f'{name}.png'),
-                    dpi=130, bbox_inches='tight')
-        plt.close()
- 
-    # ==================================================================
-    # STEP 1 — VARIABILI CHIAVE
-    # ==================================================================
-    obj_cols = [c for c in ['qk3_clean', 'qk4_clean', 'qk5_clean',
-                              'qk6_clean', 'qk10_clean'] if c in df.columns]
-    if 'qk7_clean' in df.columns:
-        df['qk7_norm'] = df['qk7_clean'] / 6
-        obj_cols_all   = obj_cols + ['qk7_norm']
-    else:
-        obj_cols_all   = obj_cols
- 
-    df['obj_score']  = df[obj_cols_all].mean(axis=1) * 100
-    df['subj_score'] = df['qk1_clean'].map({1: 100, 2: 67, 3: 33, 4: 0})
-    df['gap']        = df['subj_score'] - df['obj_score']
-    df['qk1_label']  = df['qk1_clean'].map(
-        {1: 'High', 2: 'Medium', 3: 'Low', 4: 'Not defined'})
- 
-    def classify_gap(g):
-        if pd.isna(g): return np.nan
-        if g >  15:    return 'Overconfident'
-        if g < -15:    return 'Underconfident'
-        return 'Calibrated'
- 
-    df['gap_class'] = df['gap'].apply(classify_gap)
- 
-    print(f"obj_score  → mean: {df['obj_score'].mean():.1f}")
-    print(f"subj_score → mean: {df['subj_score'].mean():.1f}")
-    print(f"gap        → mean: {df['gap'].mean():.1f}")
-    print(df['gap_class'].value_counts(dropna=False))
- 
-    # ==================================================================
-    # HELPERS
-    # ==================================================================
- 
-    def gap_distribution_within(col, x_labels, title, name,
-                                  col_order=None, figsize=(10, 5)):
-        """
-        UNICA funzione per variabili categoriche, ordinali e binarie.
- 
-        Per ogni valore di `col` (asse X):
-          % Overconfident / Calibrated / Underconfident
-          normalizzato per riga (dentro ogni categoria di col).
- 
-        Parametri
-        ---------
-        col_order : ordine esplicito delle categorie (valori originali)
-        """
-        cross = pd.crosstab(df[col], df['gap_class'], normalize='index') * 100
-        cross = cross.reindex(columns=GC_ORDER, fill_value=0)
- 
-        if col_order is not None:
-            cross = cross.reindex(col_order)
-        cross.index = [x_labels.get(i, str(i)) for i in cross.index]
-        cross = cross.dropna()
- 
-        x = np.arange(len(cross))
-        w = 0.25
-        fig, ax = plt.subplots(figsize=figsize)
- 
-        for i, (gc, color) in enumerate(zip(GC_ORDER, GC_COLORS)):
-            vals   = cross[gc].values
-            offset = (i - 1) * w
-            bars   = ax.bar(x + offset, vals, w, label=gc,
-                            color=color, edgecolor='white', linewidth=1.1)
-            for bar, val in zip(bars, vals):
-                if val > 4:
-                    ax.text(bar.get_x() + bar.get_width() / 2,
-                            bar.get_height() + 0.8,
-                            f'{val:.1f}%', ha='center', va='bottom',
-                            fontsize=8, color=color, fontweight='bold')
- 
-        ax.set_xticks(x)
-        ax.set_xticklabels(cross.index, rotation=15, ha='right')
-        ax.set_ylabel('% within each category')
-        ax.set_xlabel('')
-        ax.set_title(title, fontweight='bold')
-        ax.set_ylim(0, 75)
-        ax.axhline(y=100/3, color='black', linewidth=0.8,
-                   linestyle=':', alpha=0.4, label='Uniform baseline (33%)')
-        ax.legend(title='Calibration class', frameon=False,
-                  loc='upper right', fontsize=9)
-        ax.spines[['top', 'right']].set_visible(False)
-        save(name)
- 
-    def simple_bar(series, title, xlabel, ylabel='N',
-                   colors=None, name=None):
-        fig, ax = plt.subplots(figsize=(8, 5))
-        total = series.sum()
-        cols  = colors if colors else [BLUE] * len(series)
-        bars  = ax.bar(series.index.astype(str), series.values,
-                       color=cols, edgecolor='white', linewidth=1.2)
-        for bar, val in zip(bars, series.values):
-            if val > 0:
-                ax.text(bar.get_x() + bar.get_width() / 2,
-                        bar.get_height() + total * 0.012,
-                        f'{val:,}\n({val/total*100:.1f}%)',
-                        ha='center', va='bottom', fontsize=9)
-        ax.set_title(title, fontweight='bold')
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
-        ax.set_ylim(0, series.max() * 1.25)
-        ax.spines[['top', 'right']].set_visible(False)
-        if name:
-            save(name)
- 
-    def gap_by_group_hbar(groupby_col, title, name, figsize=(9, 5)):
-        """Gap medio per gruppo — usato solo per i demografici (Step 5)."""
-        gap_g  = df.groupby(groupby_col)['gap'].mean().sort_values()
-        colors = [ORANGE if v > 0 else BLUE for v in gap_g.values]
-        fig, ax = plt.subplots(figsize=figsize)
-        bars    = ax.barh(gap_g.index.astype(str), gap_g.values,
-                          color=colors, edgecolor='white',
-                          linewidth=1.1, height=0.6)
-        for bar in bars:
-            w    = bar.get_width()
-            xpos = w + 0.4 if w >= 0 else w - 0.4
-            ha   = 'left' if w >= 0 else 'right'
-            ax.text(xpos, bar.get_y() + bar.get_height() / 2,
-                    f'{w:+.1f}', va='center', ha=ha, fontsize=10)
-        ax.axvline(x=0, color='black', linewidth=1.2, linestyle='--')
-        ax.set_title(title, fontweight='bold')
-        ax.set_xlabel('Mean gap  (subjective − objective)\n'
-                      'Orange = overconfident  |  Blue = underconfident')
-        ax.spines[['top', 'right']].set_visible(False)
-        save(name)
- 
-    # ==================================================================
-    # STEP 2 — CONOSCENZA SOGGETTIVA
-    # ==================================================================
-    order_qk1  = ['High', 'Medium', 'Low', 'Not defined']
-    counts_qk1 = df['qk1_label'].value_counts().reindex(order_qk1)
-    simple_bar(counts_qk1,
-               title='How do people rate their own financial knowledge? (QK1)',
-               xlabel='Self-assessed knowledge level',
-               colors=[BLUE, GREY, LGREY, '#b0b0b0'],
-               name='step2_subjective_knowledge')
- 
-    # ==================================================================
-    # STEP 3 — CONOSCENZA OGGETTIVA (QK7)
-    # ==================================================================
-    if 'qk7_clean' in df.columns:
-        score_range = list(range(7))
-        counts_qk7  = df['qk7_clean'].value_counts().reindex(score_range, fill_value=0)
-        counts_qk7.index = [str(v) for v in score_range]
-        cmap   = plt.cm.Blues
-        colors = [cmap(0.3 + 0.7 * i / 6) for i in score_range]
-        fig, ax = plt.subplots(figsize=(9, 5))
-        total   = counts_qk7.sum()
-        bars    = ax.bar(counts_qk7.index, counts_qk7.values,
-                         color=colors, edgecolor='white', linewidth=1.2)
-        for bar, val in zip(bars, counts_qk7.values):
-            if val > 0:
-                ax.text(bar.get_x() + bar.get_width() / 2,
-                        val + total * 0.006,
-                        f'{val:,}\n({val/total*100:.1f}%)',
-                        ha='center', va='bottom', fontsize=9)
-        mean_v = df['qk7_clean'].mean()
-        ax.axvline(x=mean_v, color=ORANGE, linewidth=2,
-                   linestyle='--', label=f'Mean: {mean_v:.2f} / 6')
-        ax.set_title('QK7 – True/False battery: how many correct out of 6?',
-                     fontweight='bold')
-        ax.set_xlabel('Number of correct answers (0–6)')
-        ax.set_ylabel('N')
-        ax.legend(frameon=False)
-        ax.spines[['top', 'right']].set_visible(False)
-        save('step3_qk7_score')
- 
-    # ==================================================================
-    # STEP 4 — ANALISI DEL GAP
-    # ==================================================================
-    fig, ax = plt.subplots(figsize=(9, 5))
-    ax.hist(df['gap'].dropna(), bins=40, color=BLUE,
-            edgecolor='white', linewidth=0.8)
-    ax.axvline(x=0, color='black', linewidth=1.5, linestyle='--',
-               label='Zero gap')
-    ax.axvline(x=df['gap'].mean(), color=ORANGE, linewidth=2,
-               linestyle='--', label=f"Mean gap: {df['gap'].mean():.1f}")
-    ax.axvspan(-15, 15, alpha=0.08, color='green',
-               label='Calibrated zone (±15 pts)')
-    ax.set_xlabel('Gap  (subjective − objective)')
-    ax.set_ylabel('N')
-    ax.set_title('Distribution of the knowledge gap\n'
-                 'Positive = overconfident  |  Negative = underconfident',
-                 fontweight='bold')
-    ax.legend(frameon=False)
-    ax.spines[['top', 'right']].set_visible(False)
-    save('step4a_gap_distribution')
- 
-    gc_counts = df['gap_class'].value_counts().reindex(GC_ORDER)
-    simple_bar(gc_counts,
-               title='Knowledge calibration classes\n(threshold ±15 pts)',
-               xlabel='Knowledge calibration class',
-               colors=GC_COLORS,
-               name='step4b_gap_classes')
- 
-    order_qk1_m = ['High', 'Medium', 'Low', 'Not defined']
-    mean_obj_g  = df.groupby('qk1_label')['obj_score'].mean().reindex(order_qk1_m)
-    mean_sub_g  = df.groupby('qk1_label')['subj_score'].mean().reindex(order_qk1_m)
-    x = np.arange(len(order_qk1_m))
-    w = 0.35
-    fig, ax = plt.subplots(figsize=(9, 5))
-    ax.bar(x - w/2, mean_sub_g.values, w,
-           label='Subjective', color=ORANGE, edgecolor='white')
-    ax.bar(x + w/2, mean_obj_g.values, w,
-           label='Objective',  color=BLUE,   edgecolor='white')
-    ax.set_xticks(x)
-    ax.set_xticklabels(order_qk1_m)
-    ax.set_title('Do people who feel more knowledgeable actually know more?',
-                 fontweight='bold')
-    ax.set_ylabel('Mean score (0–100)')
-    ax.set_xlabel('Self-assessed knowledge level (QK1)')
-    ax.legend(frameon=False)
-    ax.spines[['top', 'right']].set_visible(False)
-    save('step4c_subj_vs_obj_by_qk1')
- 
-    # ==================================================================
-    # STEP 5 — GAP MEDIO PER DEMOGRAFICI
-    # Unico caso in cui usiamo gap medio: le variabili demografiche
-    # non correlano con obj_score in modo sistematico come i comportamenti
-    # ==================================================================
-    demo_vars = {
-        'gender':                'Gender',
-        'age_group':             'Age group',
-        'edu_level_grouped':     'Education level',
-        'income_label':          'Monthly income band',
-        'macro_region_label':    'Geographic region',
-        'work_status':           'Employment status',
-        'living_status':         'Living situation',
-        'internet_access_label': 'Internet access',
-    }
-    for col, label in demo_vars.items():
-        if col not in df.columns:
-            continue
-        gap_by_group_hbar(
-            col,
-            title=f'Mean knowledge gap by {label}',
-            name=f'step5_gap_by_{col}',
-            figsize=(9, max(4, df[col].nunique() * 0.7)))
- 
-    # ==================================================================
-    # STEP 6 — COMPORTAMENTI FINANZIARI
-    # Asse X = valore della variabile
-    # Barre  = % gap_class dentro ogni valore
-    # ==================================================================
- 
-    # 6a: saving sophistication
-    if 'saving_level_sophistication' in df.columns:
-        gap_distribution_within(
-            'saving_level_sophistication',
-            x_labels={0.0: 'Did not save', 1.0: 'Informal/Cash',
-                      2.0: 'Basic banking',  3.0: 'Investor'},
-            title='Knowledge calibration by saving sophistication\n'
-                  'Who saves more — tends to over or underestimate?',
-            name='step6_saving_sophistication',
-            col_order=[0.0, 1.0, 2.0, 3.0], figsize=(10, 5))
- 
-    # 6b: financial planning score
-    if 'financial_planning_score' in df.columns:
-        gap_distribution_within(
-            'financial_planning_score',
-            x_labels={i: str(i) for i in range(7)},
-            title='Knowledge calibration by financial planning score (0–6)\n'
-                  'Who plans more — tends to over or underestimate?',
-            name='step6_financial_planning',
-            col_order=list(range(7)), figsize=(11, 5))
- 
-    # 6c: risk aversion
-    if 'risk_aversion_class' in df.columns:
-        gap_distribution_within(
-            'risk_aversion_class',
-            x_labels={1: 'Very low', 2: 'Low', 3: 'Medium',
-                      4: 'High',     5: 'Very high'},
-            title='Knowledge calibration by risk aversion\n'
-                  'Who is more risk-averse — tends to over or underestimate?',
-            name='step6_risk_aversion',
-            col_order=[1, 2, 3, 4, 5], figsize=(10, 5))
- 
-    # 6d: binarie comportamentali
-    binary_behav = {
-        'use_dangerous_debt': (
-            'Knowledge calibration: risky debt users vs not\n'
-            'Are risky debt users more often overconfident?',
-            {0: 'No risky debt', 1: 'Uses risky debt'}, [0, 1]),
-        'use_own_resources': (
-            'Knowledge calibration: uses own resources to cope vs not',
-            {0: 'No', 1: 'Uses own resources'}, [0, 1]),
-        'informal_external_help': (
-            'Knowledge calibration: seeks informal help vs not',
-            {0: 'No', 1: 'Seeks informal help'}, [0, 1]),
-        'state_employee_pension': (
-            'Knowledge calibration: relies on state pension vs not\n'
-            'Are state-pension reliers more overconfident?',
-            {0: 'No', 1: 'State/employee pension'}, [0, 1]),
-        'private_pension_asset': (
-            'Knowledge calibration: private pension/assets vs not\n'
-            'Are private investors more underconfident?',
-            {0: 'No', 1: 'Private pension/assets'}, [0, 1]),
-    }
-    for col, (title, labels, order) in binary_behav.items():
-        if col not in df.columns:
-            continue
-        gap_distribution_within(col, labels, title,
-                                  f'step6_{col}',
-                                  col_order=order, figsize=(8, 5))
- 
-    # ==================================================================
-    # STEP 7 — VARIABILI DIGITALI
-    # ==================================================================
- 
-    # 7a: digital skills (binnato in terzili)
-    if 'digital_skills_score' in df.columns:
-        df['_dig_bin'] = pd.qcut(df['digital_skills_score'], q=3,
-                                  labels=['Low', 'Medium', 'High'])
-        gap_distribution_within(
-            '_dig_bin',
-            x_labels={'Low': 'Low', 'Medium': 'Medium', 'High': 'High'},
-            title='Knowledge calibration by digital skills level\n'
-                  'Who has higher digital skills — over or underconfident?',
-            name='step7_digital_skills',
-            col_order=['Low', 'Medium', 'High'], figsize=(9, 5))
- 
-    # 7b: digital onboarding score (0-5)
-    if 'digital_onboarding_score' in df.columns:
-        gap_distribution_within(
-            'digital_onboarding_score',
-            x_labels={i: str(i) for i in range(6)},
-            title='Knowledge calibration by digital onboarding score (0–5)\n'
-                  'Who onboards more digitally — over or underconfident?',
-            name='step7_digital_onboarding',
-            col_order=list(range(6)), figsize=(11, 5))
- 
-    # 7c: binarie digitali
-    binary_digital = {
-        'cyber_fraud_victim': (
-            'Knowledge calibration: cyber fraud victims vs not\n'
-            'Are victims more often overconfident?',
-            {0: 'Non victim', 1: 'Victim'}, [0, 1]),
-        'credit_excluded': (
-            'Knowledge calibration: denied credit vs not\n'
-            'Are those denied credit more often overconfident?',
-            {0: 'Not denied', 1: 'Denied credit'}, [0, 1]),
-        'institutional_friction': (
-            'Knowledge calibration: institutional friction vs not',
-            {0: 'No friction', 1: 'Friction'}, [0, 1]),
-    }
-    for col, (title, labels, order) in binary_digital.items():
-        if col not in df.columns:
-            continue
-        gap_distribution_within(col, labels, title,
-                                  f'step7_{col}',
-                                  col_order=order, figsize=(8, 5))
-        
-    # ==================================================================
-    # STEP 8 — DOT PLOT DI SINTESI
-    # ==================================================================
-    from scipy.stats import chi2_contingency
-    from matplotlib.lines import Line2D
-
-    if 'internet_access_label' in df.columns and 'internet_access' not in df.columns:
-        df['internet_access'] = df['internet_access_label'].map({'Yes': 1, 'No': 0})
-
-    baseline_oc = df['gap_class'].eq('Overconfident').mean() * 100
-
-    variables_summary = [
-        ('use_dangerous_debt',          1,   'Uses risky debt'),
-        ('use_own_resources',           1,   'Uses own resources'),
-        ('informal_external_help',      1,   'Seeks informal help'),
-        ('saving_level_sophistication', 0.0, 'Did not save'),
-        ('saving_level_sophistication', 1.0, 'Saves informally/cash'),
-        ('saving_level_sophistication', 2.0, 'Basic banking saver'),
-        ('saving_level_sophistication', 3.0, 'Investor'),
-        ('state_employee_pension',      1,   'Relies on state pension'),
-        ('private_pension_asset',       1,   'Has private pension/assets'),
-        ('cyber_fraud_victim',          1,   'Cyber fraud victim'),
-        ('credit_excluded',             1,   'Denied credit'),
-        ('institutional_friction',      1,   'Institutional friction'),
-        ('internet_access',             0,   'No internet access'),
-        ('internet_access',             1,   'Has internet access'),
+        # --- 3. PULIZIA FINALE ---
+    # Manteniamo solo le variabili trasformate ed eliminiamo quelle originali/intermedie
+    cols_to_drop_final = [
+        'macro_region', 'urbanization_level', 'work_situation', 'internet_access',
+        'household_adults_count', 'household_children_count', 'educational_level',
+        'nationality', 'income_band', 'freq_write_doc', 'freq_email', 'freq_mobile_call',
+        'freq_internet_call', 'freq_social_networks', 'freq_instant_messaging', 'freq_search_online'
     ]
+    cols_to_drop_final.extend([c for c in df.columns if c.endswith('_aggregated_summary')])
+    raw_q_cols = [c for c in df.columns if c.startswith(('qd', 'qf', 'qp', 'qk', 'qs')) and not c.endswith('_clean')]
+    cols_to_drop_final.extend(raw_q_cols)
+    
+    df = df.drop(columns=cols_to_drop_final, errors='ignore')
 
-    summary_rows = []
-    for col, pos_val, label in variables_summary:
-        if col not in df.columns:
-            continue
-        sub = df[df[col] == pos_val]
-        if len(sub) < 30:
-            continue
-        pct_oc = sub['gap_class'].eq('Overconfident').mean() * 100
-        delta  = pct_oc - baseline_oc
-        ct     = pd.crosstab(df[col], df['gap_class'])
-        _, p, _, _ = chi2_contingency(ct)
-        summary_rows.append({'label': label, 'delta': delta, 'p_value': p})
 
-    res_df = pd.DataFrame(summary_rows).sort_values('delta')
-
-    fig, ax = plt.subplots(figsize=(11, 7))
-    for i, row in enumerate(res_df.itertuples()):
-        color  = ORANGE if row.delta > 0 else BLUE
-        alpha  = 1.0 if row.p_value < 0.05 else 0.35
-        marker = 'o' if row.p_value < 0.05 else 'D'
-        ax.plot([0, row.delta], [i, i], color=color, alpha=alpha,
-                linewidth=1.5, zorder=1)
-        ax.scatter(row.delta, i, color=color, alpha=alpha,
-                   s=120, zorder=2, marker=marker)
-        ha   = 'left'  if row.delta >= 0 else 'right'
-        xoff = row.delta + (0.4 if row.delta >= 0 else -0.4)
-        sig  = '' if row.p_value < 0.05 else ' (n.s.)'
-        ax.text(xoff, i, f'{row.delta:+.1f}%{sig}',
-                va='center', ha=ha, fontsize=9,
-                color=color, alpha=max(alpha, 0.6))
-
-    ax.axvline(x=0, color='black', linewidth=1.2, linestyle='--', zorder=0)
-    ax.axvspan(-3, 3, alpha=0.06, color='green')
-    ax.set_yticks(range(len(res_df)))
-    ax.set_yticklabels(res_df['label'], fontsize=10)
-    ax.set_xlabel(f'Δ % Overconfident vs baseline ({baseline_oc:.1f}%)', fontsize=11)
-    ax.set_title('Who tends to overestimate their financial knowledge?\n'
-                 'Delta overconfidence by group — summary view',
-                 fontweight='bold', fontsize=13)
-    legend_elements = [
-        Line2D([0],[0], marker='o', color='w', markerfacecolor=ORANGE,
-               markersize=9, label='More overconfident than baseline'),
-        Line2D([0],[0], marker='o', color='w', markerfacecolor=BLUE,
-               markersize=9, label='Less overconfident than baseline'),
-        Line2D([0],[0], marker='D', color='w', markerfacecolor=GREY,
-               markersize=7, label='Not significant (p ≥ 0.05)'),
-    ]
-    ax.legend(handles=legend_elements, frameon=False, loc='lower right', fontsize=9)
-    ax.spines[['top', 'right']].set_visible(False)
-    ax.set_xlim(-12, 28)
-    save('step8_overconfidence_summary')
-
-    print(f"\n✓ All plots saved in '{output_dir}/'")
-    print(f"  Total files: {len(os.listdir(output_dir))}")
     return df
 
 #######################################
+# PROFILAZIONE FINANZIARIA
+########################################
 
+# ───────────────────────── 1. profilazione rule-based ───────────────────────
+vuln_str_cols = ['expenditure_shock_capacity', 'income_not_covering_costs',
+                  'lost_income_survival_time', 'retirement_plan_confidence']
+ 
+def create_dimensions(df):
+    """
+    vulnerability_score (pesi: debt 40, credit_excl 25, income_no 25,
+    shock 10). NaN nelle vuln vars → 'unknown' (sotto al codebook è -98 =
+    no income, semanticamente vulnerabile): unknown vale 20 per income,
+    10 per shock. Aggiunge anche knowledge/planning/digital level labels.
+    """
+    df = df.copy()
+    for c in vuln_str_cols:
+        if c in df.columns:
+            df[c] = df[c].fillna('unknown')
+ 
+    s = pd.Series(0, index=df.index)
+    if 'use_dangerous_debt' in df:        s += (df['use_dangerous_debt'] == 1) * 40
+    if 'credit_excluded' in df:           s += (df['credit_excluded'] == 1) * 25
+    if 'income_not_covering_costs' in df:
+        s += (df['income_not_covering_costs'] == 'yes')     * 25
+        s += (df['income_not_covering_costs'] == 'unknown') * 20
+    if 'expenditure_shock_capacity' in df:
+        s += (df['expenditure_shock_capacity'] == 'no')      * 10
+        s += (df['expenditure_shock_capacity'] == 'unknown') * 10
+ 
+    df['financial_vulnerability_score'] = s
+    df['financial_vulnerability_class'] = s.apply(
+        lambda v: 'High' if v >= 60 else 'Medium' if v >= 30 else 'Low')
+ 
+    # label di livello sulle altre dimensioni (utili nei plot)
+    if 'obj_score' in df:
+        df['knowledge_level'] = pd.cut(df['obj_score'],
+            bins=[-1, 50, 70, 101], labels=['Low','Medium','High'])
+    if 'financial_planning_score' in df:
+        df['planning_level'] = pd.cut(df['financial_planning_score'],
+            bins=[-1, 2, 4, 7], labels=['Low','Medium','High'])
+    if 'digital_onboarding_score' in df:
+        df['digital_engagement'] = pd.cut(df['digital_onboarding_score'],
+            bins=[-1, 1, 3, 6], labels=['Low','Medium','High'])
+    return df
+ 
+ 
+def assign_profile(df):
+    """9 regole gerarchiche → financial_profile (prima che matcha vince)."""
+    def rule(r):
+        v   = r.get('financial_vulnerability_class')
+        g   = r.get('gap_class')
+        obj = r.get('obj_score', np.nan)
+        pln = r.get('financial_planning_score', 0)
+        dig = r.get('digital_onboarding_score', 0)
+        sav = r.get('saving_level_sophistication', np.nan)
+        if v == 'High' and g == 'Overconfident':              return 'Fragile & Overconfident'
+        if v == 'High':                                        return 'Fragile & At Risk'
+        if obj < 50 and g == 'Overconfident':                  return 'Unskilled & Overconfident'
+        if obj >= 70 and g in ('Calibrated', 'Underconfident'):return 'Conscious Expert'
+        if obj >= 50 and pln >= 4:                             return 'Financial Planner'
+        if obj >= 50 and dig >= 2:                             return 'Digital Adopter'
+        if obj < 40 and dig <= 1 and pln <= 1:                 return 'Excluded/Passive'
+        if sav >= 2 and obj >= 50 and g != 'Overconfident':    return 'Aware Saver/Investor'
+        return 'Standard/Average'
+    df = df.copy()
+    df['financial_profile'] = df.apply(rule, axis=1)
+    return df
+ 
+ 
+# ───────────────────────── 2. clustering ────────────────────────────────────
+cluster_features = [
+    'obj_score','financial_planning_score','saving_level_sophistication',
+    'digital_onboarding_score','digital_skills_score','consumer_debt_score',
+    'traditional_investment_score','alternative_asset_score',
+    'transactional_score','saving_protection_score','risk_aversion_class',
+    'basic_admin_intensity','daily_transactional_intensity',
+    'advanced_fintech_intensity',
+]
+# colonne con skew>1 e tanti zeri sul tuo dataset: log1p prima dello scaling
+skewed = ['traditional_investment_score','digital_onboarding_score',
+          'alternative_asset_score','advanced_fintech_intensity',
+          'saving_protection_score']
+ 
+def prepare_x(df):
+    """Imputazione mediana → log1p sui skewed → StandardScaler."""
+    avail = [c for c in cluster_features if c in df.columns]
+    x = df[avail].apply(pd.to_numeric, errors='coerce')
+    x = x.fillna(x.median())
+    for c in [s for s in skewed if s in x.columns]:
+        x[c] = np.log1p(x[c])
+    return pd.DataFrame(StandardScaler().fit_transform(x),
+                         columns=avail, index=df.index)
+ 
+ 
+def select_k_and_fit(x, k_range=range(2, 9), out='clustering_plots'):
+    """Elbow + silhouette plot → fit con best_k (silhouette massima)."""
+    os.makedirs(out, exist_ok=True)
+    inertia, sils = [], []
+    for k in k_range:
+        km = KMeans(n_clusters=k, random_state=42, n_init=10)
+        labels = km.fit_predict(x)
+        inertia.append(km.inertia_)
+        sils.append(silhouette_score(x, labels))
+        print(f"  k={k} | inertia={km.inertia_:.0f} | silhouette={sils[-1]:.3f}")
+ 
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4))
+    axes[0].plot(list(k_range), inertia, 'o-'); axes[0].set_title('Elbow')
+    axes[1].plot(list(k_range), sils,    'o-'); axes[1].set_title('Silhouette')
+    for a in axes: a.set_xlabel('K'); a.grid(alpha=.3)
+    plt.tight_layout(); plt.savefig(f'{out}/k_diagnostics.png', dpi=130); plt.close()
+ 
+    best_k = list(k_range)[int(np.argmax(sils))]
+    km = KMeans(n_clusters=best_k, random_state=42, n_init=10)
+    return km.fit_predict(x), best_k
+ 
+ 
+# ───────────────────────── 3. confronto ─────────────────────────────────────
+def compare(df, out='clustering_plots'):
+    """Crosstab heatmap + ARI + NMI fra rule-based e cluster."""
+    pct = pd.crosstab(df['financial_profile'], df['cluster'],
+                       normalize='columns') * 100
+    plt.figure(figsize=(10, 7))
+    sns.heatmap(pct, annot=True, fmt='.0f', cmap='YlOrRd',
+                cbar_kws={'label': '% within cluster'})
+    plt.title('Rule-based × Cluster'); plt.tight_layout()
+    plt.savefig(f'{out}/crosstab.png', dpi=130); plt.close()
+    pct.round(1).to_csv(f'{out}/crosstab_pct.csv')
+ 
+    ari = adjusted_rand_score(df['financial_profile'], df['cluster'])
+    nmi = normalized_mutual_info_score(df['financial_profile'], df['cluster'])
+    print(f"  ARI = {ari:.3f}   NMI = {nmi:.3f}")
+    return ari, nmi
+################
 def main():
     file_path = os.getenv("DATA_PATH")
     try:
-        # 1. Caricamento e Standardizzazione Iniziale
+        # 1. Caricamento
         df = pd.read_csv(file_path)
-        df.columns = [col.lower() for col in df.columns] 
+        df.columns = [col.lower() for col in df.columns]
 
-        # 2. Pipeline di Processamento
+        # 2. Pipeline di preprocessing
         df = preprocess_financial_variables(df)
         df_main, df_active = preprocess_products_and_digital(df)
-        
-        df_main = clean_qk(df_main)
-        df_main = calcola_e_sostituisci_score(df_main)
+        df_main  = clean_qk(df_main)
+        df_main  = calcola_e_sostituisci_score(df_main)
         df_final = engineer_demographic_features(df_main)
 
-        print("Colonne Finali Main:", df_final.columns.tolist())
-        print("Dimensioni Main:", df_final.shape)
-        df_final.to_csv("cleaned_df2.csv", index=False)
-        
-        #EDA
+        print("Colonne df_final:", df_final.columns.tolist())
+        print("Dimensioni df_final:", df_final.shape)
 
-        print("\nRunning EDA...")
-        df_final = eda_research(df_active_final, output_dir='eda_research2')
-        df_final.to_csv("cleaned_df2_clustered.csv", index=False)
-       
-
-        # 3. Processamento per df_active
+        # 3. Ramo df_active (sottoinsieme di chi ha scelto prodotti recentemente)
         df_active = clean_qk(df_active)
         df_active = calcola_e_sostituisci_score(df_active)
         df_active_final = engineer_demographic_features(df_active)
-        
         df_active_final.to_csv("cleaned_active_df2.csv", index=False)
-    
+
+        # 4. Profilazione rule-based
+        print("\n→ Profilazione rule-based …")
+        df_final = create_dimensions(df_final)
+        df_final = assign_profile(df_final)
+
+        print("\n--- Financial profile distribution ---")
+        counts = df_final["financial_profile"].value_counts(dropna=False)
+        pct    = df_final["financial_profile"].value_counts(
+            normalize=True, dropna=False
+        ) * 100
+        print(pd.concat([counts.rename("n"),
+                         pct.round(1).rename("%")], axis=1))
+
+        # 5. Clustering KMeans
+        print("\n→ Clustering KMeans …")
+        x = prepare_x(df_final)
+        print("\nVariables used for clustering:")
+        print(list(x.columns))
+
+        cluster_labels, best_k = select_k_and_fit(
+            x, k_range=range(2, 10), out="clustering_plots"
+        )
+        df_final["cluster"] = cluster_labels
+
+        print(f"\nBest k selected by silhouette: {best_k}")
+        print(f"Cluster sizes, K={best_k}:")
+        print(df_final["cluster"].value_counts().sort_index())
+
+        # 6. Confronto rule-based × cluster
+        print("\n→ Confronto rule-based × cluster …")
+        compare(df_final, out="clustering_plots")
+
+        # 7. SALVATAGGIO FINALE — adesso con financial_profile e cluster
+        df_final.to_csv("cleaned_df2.csv", index=False)
+
+        print("\n✓ Processo completato. File salvati:")
+        print("  - cleaned_df2.csv         (df_final con financial_profile + cluster)")
+        print("  - cleaned_active_df2.csv")
+        print("  - clustering_plots/")
+
     except Exception as e:
         print(f"An error occurred: {e}")
+        traceback.print_exc()
+
 
 if __name__ == "__main__":
     main()
