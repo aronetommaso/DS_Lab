@@ -1,25 +1,35 @@
-# DS_Lab
-## Financial Literacy and Digital Skills in Italy: IACOFI 2023 Analysis
-This repository contains the data analysis project for the DSLAB 2026 course. The study explores the levels of financial literacy and digital financial skills among the Italian adult population, leveraging the IACOFI 2023 (Indagine sull'Alfabetizzazione e le Competenze Finanziarie degli Italiani) dataset.
+# Multidimensional Financial Vulnerability & Cyber-Fraud Risk Pipelines in Italy
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## Dataset: IACOFI 2023
-The analysis is based on the Surveys on Financial Literacy and Digital Financial Skills in Italy: Adults Questionnaire (IACOFI 2023).  
+An end-to-end micro-analytical framework designed to evaluate financial vulnerability, survey item non-disclosure, and cyber-fraud susceptibility in the Italian adult population. Utilizing the Bank of Italy's **IACOFI 2023** dataset, this repository implements a two-stage unsupervised manifold clustering pipeline, an explainable AI (XAI) framework for informative missingness decoding, and an operationally optimized cost-sensitive predictive system.
 
-## Key Data Features:
+---
 
-- Demographics: Gender, Age, Macro-region (North-West, North-East, Center, South, Islands), and Education level.  
-- Financial Behavior: Day-to-day money management, active saving methods (cash, bonds, crypto-assets), and retirement planning.  
-- Financial Knowledge: Assessment of simple/compound interest understanding and inflation concepts.  
-- Digital Skills: Frequency of online banking, use of mobile wallets (Apple/Google Pay), and awareness of cyber-security (phishing, scams).  
+## Technical Architecture Overview
 
-## Methodology
-The project follows a structured data science pipeline:
-- Data Cleaning: Handling missing values (coded as -97, -98, -99 in the original survey).  
-- Exploratory Data Analysis (EDA): Identifying trends in financial risk aversion and digital tool adoption.
-- Statistical Modeling: (Regression or Clustering) to segment the population based on financial vulnerability.
+The repository is structured around three primary analytical blocks engineered to handle highly sparse, zero-inflated, and non-linearly distributed survey microdata:
 
-### Installation
+1. **Topological Unsupervised Profiling (RQ1a):** Combines a Self-Organizing Map (SOM) lattice for high-dimensional geometric compression with a secondary $K$-means meta-clustering execution ($K=4$) to isolate continuous consumer behavioral archetypes.
+2. **Informative Non-Disclosure Analytics (RQ1b):** Transformed income non-response patterns into an explicit behavioral signal. Modeled via a multivariate Random Forest classifier coupled with SHAP (SHapley Additive exPlanations) value decompositions to segment reticent respondents into distinct socioeconomic archetypes.
+3. **Cost-Sensitive Cyber-Fraud Pipeline (RQ2):** Implements an operationally viable classification model mapping fraud susceptibility. Embeds an asymmetric business cost matrix ($FN:FP = 5:1$) into an algorithmic loss function to optimize banking risk capital burden and overcome data-scarcity blind spots.
+
+---
+
+## Dataset & Feature Engineering
+
+The codebase leverages the **Indagine sulle Competenze Finanziarie degli Adulti in Italia (IACOFI 2023)** microdata compiled by Banca d'Italia. 
+
+### Preprocessing Pipelines
+* **Conditional Routing Restoration:** Skip-logic structural NaNs (e.g., product ownership filters or digital exclusions) are conditionally mapped to logical baseline vectors to maintain matrix dimensionality without injecting bias.
+* **Informative Missingness Mappings:** Missing values in sensitive risk aversion metrics and household income are preserved as explicit tracking features rather than dropped or deterministically imputed.
+* **Composite Indicator Construction:** Raw survey matrices are engineered into multi-choice continuous behavioral and psychological dimensions, including an objective-subjective **Financial Literacy Gap** scale, a *Saving Sophistication Level* scale, and directional *Attitudinal Consolidation indicators* (reverse-coded for valence alignment).
+
+---
+
 To explore the analysis and run the code locally, clone this repository using the following command:
 ```bash
+
 git clone https://github.com/aronetommaso/DS_Lab.git
+
 cd DS_Lab
