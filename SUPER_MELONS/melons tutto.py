@@ -13,12 +13,7 @@ from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
 load_dotenv()
 
 def preprocess_complete_iacofi(df):
-    """
-    Comprehensive preprocessing for IACOFI 2023 dataset.
-    1. Maps ALL variables from the codebook to descriptive names.
-    2. Consolidates all multiple-choice "tick all that apply" variables 
-       (with _1, _2, etc.) into single categorical string variables.
-    """
+   
     # Convert all columns to lowercase to ensure matching[cite: 1]
     df.columns = [col.lower() for col in df.columns]
 
@@ -74,7 +69,7 @@ def preprocess_complete_iacofi(df):
         }
     }
 
-    # Dynamically generate mappings for Financial Products (QP1, QP2, QP3)[cite: 1]
+    # Dynamically generate mappings for Financial Products (QP1, QP2, QP3)
     products_suffix = {
         '1': 'pension', '2': 'investment_account', '3': 'mortgage', '5': 'unsecured_loan',
         '7': 'credit_card', '8': 'current_account', '9': 'savings_account', '11': 'insurance',
@@ -110,7 +105,7 @@ def preprocess_complete_iacofi(df):
     df = df.drop(columns=cols_to_drop, errors='ignore')
 
     # --- STEP 2: MAP ALL REMAINING SINGLE VARIABLES & LIKERT SCALES ---
-    # These are not binary "tick all that apply" questions, so they remain independent columns[cite: 1].
+    # These are not binary "tick all that apply" questions, so they remain independent columns.
     full_name_mapping = {
         # Personal and Household
         'qd1': 'gender', 'qd7': 'age', 'qd7_a': 'age_bands', 'qd2': 'macro_region',
@@ -213,13 +208,13 @@ def preprocess_financial_variables(df):
     def get_existing_cols(cols):
         return [c for c in cols if c in df.columns]
 
-    # --- QF2: Score Pianificazione Finanziaria (0 to 6) ---
+    # --- QF2
     qf2_cols = get_existing_cols(['qf2_1', 'qf2_2', 'qf2_3', 'qf2_4', 'qf2_5', 'qf2_6'])
     if qf2_cols:
         # Sum only the '1' (Yes) responses. Missing values in these binary cols are treated as 0 for the score sum
         df['Financial_planning_score'] = df[qf2_cols].eq(1).sum(axis=1)
 
-    # --- QF3: Livello Sofisticazione Risparmio (0 to 3) ---
+    # --- QF3
     def calc_saving_sophistication(row):
         # Level 3: Investor (Bonds, Crypto, Stocks)
         if row.get('qf3_5') == 1 or row.get('qf3_6') == 1 or row.get('qf3_7') == 1:
@@ -238,7 +233,7 @@ def preprocess_financial_variables(df):
     if any('qf3' in c for c in df.columns):
         df['Saving_level_sophistication'] = df.apply(calc_saving_sophistication, axis=1)
 
-    # --- QF9: Pensione (Macro-Flags 0/1) ---
+    # --- QF9
     qf9_state = get_existing_cols(['qf9_1', 'qf9_12'])
     qf9_private = get_existing_cols(['qf9_2', 'qf9_3', 'qf9_4', 'qf9_5', 'qf9_6'])
     qf9_network = get_existing_cols(['qf9_7', 'qf9_8', 'qf9_10'])
@@ -304,21 +299,7 @@ def preprocess_financial_variables(df):
     return df
 
 def clean_qk(df):
-    """
-    Cleans QK financial knowledge variables.
 
-    qk1_clean:
-        high = qk1 1/2
-        medium-low = qk1 3/4
-        not defined = missing/refused/other
-
-    qk3, qk4, qk5, qk6, qk10:
-        correct = 1
-        wrong/missing = 0
-
-    qk7_clean:
-        score from 0 to 6
-    """
 
     df = df.copy()
     df.columns = [col.lower() for col in df.columns]
@@ -347,23 +328,23 @@ def clean_qk(df):
         if col in df.columns:
             df["qk7_clean"] += (df[col] == correct_value).astype(int)
             
-    # --- CALCOLO GAP CLASS (INTEGRATO DALLA VECCHIA EDA) ---
+    # ---  GAP CLASS ---
     obj_cols = [c for c in ['qk3_clean', 'qk4_clean', 'qk5_clean', 'qk6_clean', 'qk10_clean'] if c in df.columns]
     
-    # Temporaneamente normalizziamo qk7 da 0 a 1 per unirlo agli altri
+
     if 'qk7_clean' in df.columns:
         df['qk7_norm'] = df['qk7_clean'] / 6
         obj_cols_all = obj_cols + ['qk7_norm']
     else:
         obj_cols_all = obj_cols
 
-    # Calcolo punteggio oggettivo (0-100)
+    # obj score
     df['obj_score'] = df[obj_cols_all].mean(axis=1) * 100
     
-    # Calcolo punteggio soggettivo (0-100) basato su qk1
+
     df['subj_score'] = df['qk1_clean'].map({1: 100, 2: 67, 3: 33, 4: 0})
     
-    # Differenza (Gap) e Categoria Semantica
+
     df['gap'] = df['subj_score'] - df['obj_score']
     df['subj_knowledge_label'] = df['qk1_clean'].map({1: 'High', 2: 'Medium', 3: 'Low', 4: 'Not defined'})
 
@@ -379,9 +360,7 @@ def clean_qk(df):
 
 
 def preprocess_products_and_digital(df):
-    """
-    Preprocesses the QP block (Financial Products, Digital Behaviors, Issues).
-    """
+  
     df_qp = df.copy()
 
     def get_existing_cols(cols):
@@ -474,7 +453,7 @@ def preprocess_products_and_digital(df):
         'Advanced_Fintech_Intensity', 'Cyber_Fraud_Victim', 'Institutional_Friction', 'Credit_Excluded'
     ]
     
-    df_qp_main = df_qp.copy() #[[c for c in final_qp_cols if c in df_qp.columns]].copy()
+    df_qp_main = df_qp.copy()
     print("QP Block (Products & Digital) preprocessed successfully.")
     return df_qp_main, df_active
  
@@ -482,7 +461,7 @@ def calcola_e_sostituisci_score(df):
       
     qs_cols = [col for col in df.columns if str(col).startswith('qs')] #tutte le variabili Attitudes and Behaviour iniziano con qs
     
-    # Categoria (Polarità e Categorie)
+
     yellow_attributes=['qs1_1','qs1_3', 'qs1_7', 'qs1_10', 'qs1_13', 'qs2_1', 'qs2_2', 'qs2_6', 'qs2_8','qs3_3','qs3_9','qs3_10', 'qs3_11', 'qs3_12', 
                    'qs4_1', 'qs4_3', 'qs4_7', 'qs4_8', 'qs5_4', 'qs5_5', 'qs5_6']
     red_attributes = ['qs1_2', 'qs1_5', 'qs1_8', 'qs1_9', 'qs2_3', 'qs2_4', 'qs2_5', 'qs2_7', 'qs3_13', 'qs4_2', 'qs4_4', 'qs4_5', 'qs4_6']
@@ -492,11 +471,11 @@ def calcola_e_sostituisci_score(df):
     brown_cat = ['qs1_9', 'qs2_6', 'qs2_7', 'qs2_8', 'qs3_13', 'qs4_1', 'qs4_2', 'qs4_3', 'qs4_4', 'qs4_5', 'qs4_6', 'qs4_8']
     blue_cat = ['qs1_4', 'qs1_7', 'qs1_10', 'qs2_2', 'qs2_4', 'qs3_3', 'qs3_9', 'qs3_10']
 
-    # considero solo le variabili d'interesse e NON NAN
+    # excluding NaN
     df_calc = df[qs_cols].copy()
     df_calc = df_calc.where(df_calc.isin([1, 2, 3, 4, 5]))
     
-    # trasformazione variabili rosse e verdi
+
     for col in red_attributes:
         if col in df_calc.columns:
             df_calc[col] = 6 - df_calc[col]
@@ -505,10 +484,10 @@ def calcola_e_sostituisci_score(df):
         if col in df_calc.columns:
             df_calc[col] = 0
             
-    # creo il nuovo dataset senza le variabili  'qs'
+
     df_finale = df.drop(columns=qs_cols).copy()
     
-    # aggiungo le tre variabili nuove
+
     df_finale['finacial_situation'] = df_calc[blue_cat].sum(axis=1)
     df_finale['behaviour_investement-payment'] = df_calc[pink_cat].sum(axis=1)
     df_finale['knowledge_financial_privacy_digital'] = df_calc[brown_cat].sum(axis=1)
@@ -517,10 +496,7 @@ def calcola_e_sostituisci_score(df):
     return df_finale
 
 def plotting_financial_variables(df):
-    """
-    Generates and saves a plot for each financial variable in the dataframe.
-    Saves all plots inside the 'plot' folder.
-    """
+  
     output_dir = 'plot'
     os.makedirs(output_dir, exist_ok=True)
 
@@ -553,17 +529,16 @@ def plotting_financial_variables(df):
         plt.savefig(os.path.join(output_dir, f"{col}.png"))
         plt.close()
         
-    print(f"All plots have been saved in the '{output_dir}' folder.")
+  
 
 def engineer_demographic_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     Step 3: Full Demographic & Background Feature Engineering (IACOFI 2023).
-    Versione Fixata: Previene sovrapposizioni, risolve gli aggregati e droppa le vecchie età.
     """
-    df = df.copy() # Evita i SettingWithCopyWarning
+    df = df.copy()
     df.columns = [col.lower() for col in df.columns]
 
-    # --- 1. AGGIUNTA LOGICA DI AGGREGAZIONE (Prima mancava la funzione aggregate_options) ---
+    # -aggregation logics
     multi_option_groups = {
         'qd5': { 'qd5_1': 'alone', 'qd5_2': 'partner', 'qd5_3': 'children_under_18', 'qd5_4': 'children_over_18', 'qd5_5': 'adult_relatives', 'qd5_6': 'friends', 'qd5_7': 'other_adults'},
         'qf2': { 'qf2_1': 'plan_budget', 'qf2_2': 'note_spending', 'qf2_3': 'separate_bills_money', 'qf2_4': 'note_upcoming_bills', 'qf2_5': 'use_banking_app', 'qf2_6': 'auto_payments'},
@@ -580,7 +555,7 @@ def engineer_demographic_features(df: pd.DataFrame) -> pd.DataFrame:
     multi_option_groups['qp2'] = {f'qp2_{k}': v for k, v in products_suffix.items()} 
     multi_option_groups['qp3'] = {f'qp3_{k}': v for k, v in products_suffix.items()} 
 
-    # Funzione per condensare i "tick all that apply" in una stringa
+
     def aggregate_options(row, col_map):
         active = [label for col, label in col_map.items() if col in row and row[col] == 1]
         return ", ".join(active) if active else "None/Refused"
@@ -595,7 +570,7 @@ def engineer_demographic_features(df: pd.DataFrame) -> pd.DataFrame:
 
     df = df.drop(columns=cols_to_drop, errors='ignore')
 
-    # --- 2. MAPPING DI TUTTE LE VARIABILI SINGOLE ---
+    # - mapping singles variables
     full_name_mapping = {
         'qd1': 'gender', 'qd7': 'age', 'qd7_a': 'age_bands', 'qd2': 'macro_region', 'qd3': 'urbanization_level', 'qd10': 'work_situation', 'qd14': 'internet_access', 'qd5_ad': 'household_adults_count', 'qd5_ch': 'household_children_count',
         'qd6_1': 'freq_write_doc', 'qd6_2': 'freq_email', 'qd6_3': 'freq_mobile_call', 'qd6_4': 'freq_internet_call', 'qd6_5': 'freq_social_networks', 'qd6_6': 'freq_instant_messaging', 'qd6_7': 'freq_search_online',
@@ -606,7 +581,7 @@ def engineer_demographic_features(df: pd.DataFrame) -> pd.DataFrame:
     # 1. GENDER
     df['gender'] = df['gender'].map({0: 'Woman', 1: 'Man'})
 
-    # 2. AGE GROUP (Risolto il problema stringhe/NaN che faceva sparire i gruppi)
+    # 2. AGE GROUP 
     def _map_age_to_band(val):
         try:
             val = float(val)
@@ -626,10 +601,10 @@ def engineer_demographic_features(df: pd.DataFrame) -> pd.DataFrame:
     age_mapped  = df['age'].apply(_map_age_to_band)
     age_unified = age_mapped.fillna(df['age_bands']).replace([-99, -97], pd.NA)
     
-    # Crea la variabile finale pulita
+
     df['age_group'] = age_unified.map(age_band_labels)
     
-    # NOVITA: ELIMINA le due vecchie colonne per non vederle più nel file finale!
+
     df = df.drop(columns=['age', 'age_bands'], errors='ignore')
 
     # 3. MACRO-REGION
@@ -688,8 +663,8 @@ def engineer_demographic_features(df: pd.DataFrame) -> pd.DataFrame:
     # 11. INTERNET ACCESS 
     df['internet_access_label'] = df['internet_access'].map({1: 'Yes', 0: 'No'})
 
-        # --- 3. PULIZIA FINALE ---
-    # Manteniamo solo le variabili trasformate ed eliminiamo quelle originali/intermedie
+        # final cleaning
+
     cols_to_drop_final = [
         'macro_region', 'urbanization_level', 'work_situation', 'internet_access',
         'household_adults_count', 'household_children_count', 'educational_level',
@@ -706,20 +681,10 @@ def engineer_demographic_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 ####################
-# EDA CLE ########
 ####################
 
 def eda_research(df, output_dir='eda_research_2'):
-    """
-    EDA: 'Le persone tendono a misvalutare le proprie conoscenze finanziarie?'
- 
-    LOGICA UNICA per step 6 e 7:
-      Asse X   = categorie della variabile di interesse
-      Barre    = % Overconfident / Calibrated / Underconfident
-                 normalizzata PER RIGA (dentro ogni categoria della variabile)
-      Domanda  : 'Chi appartiene a questa categoria — tende a essere
-                  overconfident, calibrated o underconfident?'
-    """
+    
     os.makedirs(output_dir, exist_ok=True)
     df = df.copy()
  
@@ -742,9 +707,6 @@ def eda_research(df, output_dir='eda_research_2'):
                     dpi=130, bbox_inches='tight')
         plt.close()
  
-    # ==================================================================
-    # STEP 1 — VARIABILI CHIAVE
-    # ==================================================================
     obj_cols = [c for c in ['qk3_clean', 'qk4_clean', 'qk5_clean',
                               'qk6_clean', 'qk10_clean'] if c in df.columns]
     if 'qk7_clean' in df.columns:
@@ -778,17 +740,7 @@ def eda_research(df, output_dir='eda_research_2'):
  
     def gap_distribution_within(col, x_labels, title, name,
                                   col_order=None, figsize=(10, 5)):
-        """
-        UNICA funzione per variabili categoriche, ordinali e binarie.
- 
-        Per ogni valore di `col` (asse X):
-          % Overconfident / Calibrated / Underconfident
-          normalizzato per riga (dentro ogni categoria di col).
- 
-        Parametri
-        ---------
-        col_order : ordine esplicito delle categorie (valori originali)
-        """
+        
         cross = pd.crosstab(df[col], df['gap_class'], normalize='index') * 100
         cross = cross.reindex(columns=GC_ORDER, fill_value=0)
  
@@ -848,7 +800,7 @@ def eda_research(df, output_dir='eda_research_2'):
             save(name)
  
     def gap_by_group_hbar(groupby_col, title, name, figsize=(9, 5)):
-        """Gap medio per gruppo — usato solo per i demografici (Step 5)."""
+
         gap_g  = df.groupby(groupby_col)['gap'].mean().sort_values()
         colors = [ORANGE if v > 0 else BLUE for v in gap_g.values]
         fig, ax = plt.subplots(figsize=figsize)
@@ -869,7 +821,7 @@ def eda_research(df, output_dir='eda_research_2'):
         save(name)
  
     # ==================================================================
-    # STEP 2 — CONOSCENZA SOGGETTIVA
+    # subjective knowledge
     # ==================================================================
     order_qk1  = ['High', 'Medium', 'Low', 'Not defined']
     counts_qk1 = df['qk1_label'].value_counts().reindex(order_qk1)
@@ -880,7 +832,7 @@ def eda_research(df, output_dir='eda_research_2'):
                name='step2_subjective_knowledge')
  
     # ==================================================================
-    # STEP 3 — CONOSCENZA OGGETTIVA (QK7)
+    # objective knowledge
     # ==================================================================
     if 'qk7_clean' in df.columns:
         score_range = list(range(7))
@@ -910,7 +862,7 @@ def eda_research(df, output_dir='eda_research_2'):
         save('step3_qk7_score')
  
     # ==================================================================
-    # STEP 4 — ANALISI DEL GAP
+    # gap analysis
     # ==================================================================
     fig, ax = plt.subplots(figsize=(9, 5))
     ax.hist(df['gap'].dropna(), bins=40, color=BLUE,
@@ -958,9 +910,7 @@ def eda_research(df, output_dir='eda_research_2'):
     save('step4c_subj_vs_obj_by_qk1')
  
     # ==================================================================
-    # STEP 5 — GAP MEDIO PER DEMOGRAFICI
-    # Unico caso in cui usiamo gap medio: le variabili demografiche
-    # non correlano con obj_score in modo sistematico come i comportamenti
+    # avarage gap for demographic variables
     # ==================================================================
     demo_vars = {
         'gender':                'Gender',
@@ -982,9 +932,7 @@ def eda_research(df, output_dir='eda_research_2'):
             figsize=(9, max(4, df[col].nunique() * 0.7)))
  
     # ==================================================================
-    # STEP 6 — COMPORTAMENTI FINANZIARI
-    # Asse X = valore della variabile
-    # Barre  = % gap_class dentro ogni valore
+    # financial beahaviours
     # ==================================================================
  
     # 6a: saving sophistication
@@ -1019,7 +967,7 @@ def eda_research(df, output_dir='eda_research_2'):
             name='step6_risk_aversion',
             col_order=[1, 2, 3, 4, 5], figsize=(10, 5))
  
-    # 6d: binarie comportamentali
+    # 6d
     binary_behav = {
         'use_dangerous_debt': (
             'Knowledge calibration: risky debt users vs not\n'
@@ -1048,10 +996,10 @@ def eda_research(df, output_dir='eda_research_2'):
                                   col_order=order, figsize=(8, 5))
  
     # ==================================================================
-    # STEP 7 — VARIABILI DIGITALI
+    # digital variables
     # ==================================================================
  
-    # 7a: digital skills (binnato in terzili)
+    # 7a: digital skills 
     if 'digital_skills_score' in df.columns:
         df['_dig_bin'] = pd.qcut(df['digital_skills_score'], q=3,
                                   labels=['Low', 'Medium', 'High'])
@@ -1073,7 +1021,7 @@ def eda_research(df, output_dir='eda_research_2'):
             name='step7_digital_onboarding',
             col_order=list(range(6)), figsize=(11, 5))
  
-    # 7c: binarie digitali
+    # 7c
     binary_digital = {
         'cyber_fraud_victim': (
             'Knowledge calibration: cyber fraud victims vs not\n'
@@ -1095,7 +1043,7 @@ def eda_research(df, output_dir='eda_research_2'):
                                   col_order=order, figsize=(8, 5))
         
     # ==================================================================
-    # STEP 8 — DOT PLOT DI SINTESI
+    # synthesis dot plot
     # ==================================================================
     from scipy.stats import chi2_contingency
     from matplotlib.lines import Line2D
@@ -1179,20 +1127,14 @@ def eda_research(df, output_dir='eda_research_2'):
     return df
 
 #######################################
-# PROFILAZIONE FINANZIARIA
+# financial profilation
 ########################################
-
-# ───────────────────────── 1. profilazione rule-based ───────────────────────
+# rule based prof
 vuln_str_cols = ['expenditure_shock_capacity', 'income_not_covering_costs',
                   'lost_income_survival_time', 'retirement_plan_confidence']
  
 def create_dimensions(df):
-    """
-    vulnerability_score (pesi: debt 40, credit_excl 25, income_no 25,
-    shock 10). NaN nelle vuln vars → 'unknown' (sotto al codebook è -98 =
-    no income, semanticamente vulnerabile): unknown vale 20 per income,
-    10 per shock. Aggiunge anche knowledge/planning/digital level labels.
-    """
+    
     df = df.copy()
     for c in vuln_str_cols:
         if c in df.columns:
@@ -1212,7 +1154,7 @@ def create_dimensions(df):
     df['financial_vulnerability_class'] = s.apply(
         lambda v: 'High' if v >= 60 else 'Medium' if v >= 30 else 'Low')
  
-    # label di livello sulle altre dimensioni (utili nei plot)
+
     if 'obj_score' in df:
         df['knowledge_level'] = pd.cut(df['obj_score'],
             bins=[-1, 50, 70, 101], labels=['Low','Medium','High'])
@@ -1226,7 +1168,7 @@ def create_dimensions(df):
  
  
 def assign_profile(df):
-    """9 regole gerarchiche → financial_profile (prima che matcha vince)."""
+
     def rule(r):
         v   = r.get('financial_vulnerability_class')
         g   = r.get('gap_class')
@@ -1248,7 +1190,7 @@ def assign_profile(df):
     return df
  
  
-# ───────────────────────── 2. clustering ────────────────────────────────────
+# clustering
 cluster_features = [
     'obj_score','financial_planning_score','saving_level_sophistication',
     'digital_onboarding_score','digital_skills_score','consumer_debt_score',
@@ -1257,13 +1199,13 @@ cluster_features = [
     'basic_admin_intensity','daily_transactional_intensity',
     'advanced_fintech_intensity',
 ]
-# colonne con skew>1 e tanti zeri sul tuo dataset: log1p prima dello scaling
+
 skewed = ['traditional_investment_score','digital_onboarding_score',
           'alternative_asset_score','advanced_fintech_intensity',
           'saving_protection_score']
  
 def prepare_x(df):
-    """Imputazione mediana → log1p sui skewed → StandardScaler."""
+    
     avail = [c for c in cluster_features if c in df.columns]
     x = df[avail].apply(pd.to_numeric, errors='coerce')
     x = x.fillna(x.median())
@@ -1274,7 +1216,7 @@ def prepare_x(df):
  
  
 def select_k_and_fit(x, k_range=range(2, 9), out='clustering_plots'):
-    """Elbow + silhouette plot → fit con best_k (silhouette massima)."""
+   
     os.makedirs(out, exist_ok=True)
     inertia, sils = [], []
     for k in k_range:
@@ -1295,7 +1237,7 @@ def select_k_and_fit(x, k_range=range(2, 9), out='clustering_plots'):
     return km.fit_predict(x), best_k
  
  
-# ───────────────────────── 3. confronto ─────────────────────────────────────
+# comparison
 def compare(df, out='clustering_plots'):
     """Crosstab heatmap + ARI + NMI fra rule-based e cluster."""
     pct = pd.crosstab(df['financial_profile'], df['cluster'],
@@ -1319,7 +1261,7 @@ def main():
         df = pd.read_csv(file_path)
         df.columns = [col.lower() for col in df.columns]
 
-        # 2. Pipeline di preprocessing
+        # 2. preprocessing pipeline
         df = preprocess_financial_variables(df)
         df_main, df_active = preprocess_products_and_digital(df)
         df_main  = clean_qk(df_main)
@@ -1329,7 +1271,7 @@ def main():
         print("Colonne df_final:", df_final.columns.tolist())
         print("Dimensioni df_final:", df_final.shape)
 
-        # 3. Ramo df_active (sottoinsieme di chi ha scelto prodotti recentemente)
+        # 3.  df_active 
         df_active = clean_qk(df_active)
         df_active = calcola_e_sostituisci_score(df_active)
         df_active_final = engineer_demographic_features(df_active)
@@ -1341,7 +1283,7 @@ def main():
         print("\nRunning EDA...")
         df_final = eda_research(df_final, output_dir='eda_research2')
        
-        # 4. Profilazione rule-based
+        # 4. rule-based prof
         print("\n→ Profilazione rule-based …")
         df_final = create_dimensions(df_final)
         df_final = assign_profile(df_final)
@@ -1369,11 +1311,11 @@ def main():
         print(f"Cluster sizes, K={best_k}:")
         print(df_final["cluster"].value_counts().sort_index())
 
-        # 6. Confronto rule-based × cluster
+        # 6. comparison rule-based × cluster
         print("\n→ Confronto rule-based × cluster …")
         compare(df_final, out="clustering_plots")
 
-        # 7. SALVATAGGIO FINALE — adesso con financial_profile e cluster
+        # 7. final saving
         df_final.to_csv("cleaned_df2.csv", index=False)
 
         print("\n✓ Processo completato. File salvati:")
