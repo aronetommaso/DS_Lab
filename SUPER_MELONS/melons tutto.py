@@ -454,7 +454,7 @@ def preprocess_products_and_digital(df):
  
 def calcola_e_sostituisci_score(df):
       
-    qs_cols = [col for col in df.columns if str(col).startswith('qs')] #tutte le variabili Attitudes and Behaviour iniziano con qs
+    qs_cols = [col for col in df.columns if str(col).startswith('qs')] 
     
 
     yellow_attributes=['qs1_1','qs1_3', 'qs1_7', 'qs1_10', 'qs1_13', 'qs2_1', 'qs2_2', 'qs2_6', 'qs2_8','qs3_3','qs3_9','qs3_10', 'qs3_11', 'qs3_12', 
@@ -606,7 +606,7 @@ def engineer_demographic_features(df: pd.DataFrame) -> pd.DataFrame:
     # 4. URBANIZATION LEVEL
     df['urban_area_label'] = df['urbanization_level'].map({1: '<3k', 2: '3k-15k', 3: '15k-100k', 4: '100k-1M', 5: '>1M'})
 
-    # 5a. LIVING STATUS (Adesso trova il campo 'qd5_aggregated_summary')
+    # 5a. LIVING STATUS 
     def _derive_living_status(row):
         summary = str(row.get('qd5_aggregated_summary', '')).lower()
         if summary in ('', 'nan', 'none/refused'): return float('nan')
@@ -1247,7 +1247,7 @@ def compare(df, out='clustering_plots'):
 def main():
     file_path = os.getenv("DATA_PATH")
     try:
-        # 1. Caricamento
+        # 1. loading
         df = pd.read_csv(file_path)
         df.columns = [col.lower() for col in df.columns]
 
@@ -1258,8 +1258,8 @@ def main():
         df_main  = calcola_e_sostituisci_score(df_main)
         df_final = engineer_demographic_features(df_main)
 
-        print("Colonne df_final:", df_final.columns.tolist())
-        print("Dimensioni df_final:", df_final.shape)
+        print("columns df_final:", df_final.columns.tolist())
+        print("dimensions df_final:", df_final.shape)
 
         # 3.  df_active 
         df_active = clean_qk(df_active)
@@ -1270,15 +1270,15 @@ def main():
               
         #EDA
 
-        print("\nRunning EDA...")
+
         df_final = eda_research(df_final, output_dir='eda_research2')
        
         # 4. rule-based prof
-        print("\n→ Profilazione rule-based …")
+
         df_final = create_dimensions(df_final)
         df_final = assign_profile(df_final)
 
-        print("\n--- Financial profile distribution ---")
+        
         counts = df_final["financial_profile"].value_counts(dropna=False)
         pct    = df_final["financial_profile"].value_counts(
             normalize=True, dropna=False
@@ -1287,7 +1287,7 @@ def main():
                          pct.round(1).rename("%")], axis=1))
 
         # 5. Clustering KMeans
-        print("\n→ Clustering KMeans …")
+        
         x = prepare_x(df_final)
         print("\nVariables used for clustering:")
         print(list(x.columns))
@@ -1302,16 +1302,13 @@ def main():
         print(df_final["cluster"].value_counts().sort_index())
 
         # 6. comparison rule-based × cluster
-        print("\n→ Confronto rule-based × cluster …")
+        
         compare(df_final, out="clustering_plots")
 
         # 7. final saving
         df_final.to_csv("cleaned_df2.csv", index=False)
 
-        print("\n✓ Processo completato. File salvati:")
-        print("  - cleaned_df2.csv         (df_final con financial_profile + cluster)")
-        print("  - cleaned_active_df2.csv")
-        print("  - clustering_plots/")
+        
 
     except Exception as e:
         print(f"An error occurred: {e}")
