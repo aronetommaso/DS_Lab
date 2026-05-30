@@ -179,11 +179,7 @@ def preprocess_complete_iacofi(df):
 
 
 def preprocess_financial_variables(df):
-    """
-    Preprocesses financial variables from the IACOFI 2023 survey.
-    Transforms multi-option questions into semantic scores/flags to reduce dimensionality,
-    and maps categorical questions to readable strings while handling missing values.
-    """
+   
     
     # 1. Map Categorical Variables & Handle Missing Values (-97, -98, -99 -> NaN)
     categorical_value_maps = {
@@ -289,7 +285,6 @@ def preprocess_financial_variables(df):
     # Print summary to verify new cardinality
     print("Financial Dataset Overview:")
     print(df_financial.head())
-    print("\nUnique categories per column (should be much lower now!):")
     for col in df_financial.columns:
         # Using dropna() to count only valid categories
         print(f"for {col}: {len(df_financial[col].dropna().unique())}")
@@ -454,7 +449,7 @@ def preprocess_products_and_digital(df):
     ]
     
     df_qp_main = df_qp.copy()
-    print("QP Block (Products & Digital) preprocessed successfully.")
+
     return df_qp_main, df_active
  
 def calcola_e_sostituisci_score(df):
@@ -532,9 +527,7 @@ def plotting_financial_variables(df):
   
 
 def engineer_demographic_features(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Step 3: Full Demographic & Background Feature Engineering (IACOFI 2023).
-    """
+
     df = df.copy()
     df.columns = [col.lower() for col in df.columns]
 
@@ -1121,9 +1114,6 @@ def eda_research(df, output_dir='eda_research_2'):
     ax.spines[['top', 'right']].set_visible(False)
     ax.set_xlim(-12, 28)
     save('step8_overconfidence_summary')
-
-    print(f"\n✓ All plots saved in '{output_dir}/'")
-    print(f"  Total files: {len(os.listdir(output_dir))}")
     return df
 
 #######################################
